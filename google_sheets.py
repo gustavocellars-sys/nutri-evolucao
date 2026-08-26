@@ -1,4 +1,8 @@
+import os
 import gspread
+import streamlit as st
+
+from google.oauth2.service_account import Credentials
 
 
 NOME_PLANILHA = "Controle de Avaliação Corporal"
@@ -41,9 +45,50 @@ COLUNAS_PESAGENS = [
 
 
 def conectar_planilha():
-    gc = gspread.oauth(
-        credentials_filename="client_secret.json"
-    )
+
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    # -----------------------------------------
+    # AMBIENTE LOCAL
+    # -----------------------------------------
+
+    if os.path.exists("service_account.json"):
+
+        credentials = Credentials.from_service_account_file(
+            "service_account.json",
+            scopes=scopes
+        )
+
+    # -----------------------------------------
+    # STREAMLIT CLOUD
+    # -----------------------------------------
+
+    else:
+
+        credentials = Credentials.from_service_account_info(
+            {
+                "type": st.secrets["gcp_service_account"]["type"],
+                "project_id": st.secrets["gcp_service_account"]["project_id"],
+                "private_key_id": st.secrets["gcp_service_account"]["private_key_id"],
+                "private_key": st.secrets["gcp_service_account"]["private_key"],
+                "client_email": st.secrets["gcp_service_account"]["client_email"],
+                "client_id": st.secrets["gcp_service_account"]["client_id"],
+                "auth_uri": st.secrets["gcp_service_account"]["auth_uri"],
+                "token_uri": st.secrets["gcp_service_account"]["token_uri"],
+                "auth_provider_x509_cert_url": st.secrets[
+                    "gcp_service_account"
+                ]["auth_provider_x509_cert_url"],
+                "client_x509_cert_url": st.secrets[
+                    "gcp_service_account"
+                ]["client_x509_cert_url"],
+            },
+            scopes=scopes
+        )
+
+    gc = gspread.authorize(credentials)
 
     return gc.open(NOME_PLANILHA)
 
@@ -168,6 +213,8 @@ def adicionar_pesagem(pesagem):
         nova_linha,
         value_input_option="USER_ENTERED"
     )
+
+
 def listar_pesagens_por_paciente(id_paciente):
     pesagens = listar_pesagens()
 
