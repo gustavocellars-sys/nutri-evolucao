@@ -1,0 +1,1495 @@
+import streamlit as st
+import random
+import string
+import pandas as pd
+import plotly.express as px
+
+from datetime import date, datetime
+
+from google_sheets import (
+    listar_pacientes,
+    adicionar_paciente,
+    listar_pesagens,
+    adicionar_pesagem,
+    listar_pesagens_por_paciente
+)
+
+
+# =========================================================
+# CONFIGURAÇÃO DA PÁGINA
+# =========================================================
+
+st.set_page_config(
+    page_title="Evolução Nutricional",
+    page_icon="📊",
+    layout="centered"
+)
+
+
+# =========================================================
+# FUNÇÕES AUXILIARES
+# =========================================================
+
+def gerar_codigo_acesso(pacientes):
+
+    caracteres = string.ascii_uppercase + string.digits
+
+    codigos_existentes = {
+        str(paciente.get("codigo_acesso", "")).upper()
+        for paciente in pacientes
+    }
+
+    while True:
+
+        codigo = "".join(
+            random.choices(caracteres, k=6)
+        )
+
+        if codigo not in codigos_existentes:
+            return codigo
+
+
+def gerar_id_paciente(pacientes):
+
+    numeros = []
+
+    for paciente in pacientes:
+
+        id_atual = str(
+            paciente.get("id_paciente", "")
+        )
+
+        try:
+
+            numero = int(
+                id_atual.replace("P", "")
+            )
+
+            numeros.append(numero)
+
+        except ValueError:
+            pass
+
+    if not numeros:
+        return "P0001"
+
+    proximo_numero = max(numeros) + 1
+
+    return f"P{proximo_numero:04d}"
+
+
+def gerar_id_pesagem(pesagens):
+
+    numeros = []
+
+    for pesagem in pesagens:
+
+        id_atual = str(
+            pesagem.get("id_pesagem", "")
+        )
+
+        try:
+
+            numero = int(
+                id_atual.replace("AV", "")
+            )
+
+            numeros.append(numero)
+
+        except ValueError:
+            pass
+
+    if not numeros:
+        return "AV0001"
+
+    proximo_numero = max(numeros) + 1
+
+    return f"AV{proximo_numero:04d}"
+
+
+def buscar_paciente_por_codigo(codigo, pacientes):
+
+    codigo = codigo.strip().upper()
+
+    for paciente in pacientes:
+
+        codigo_paciente = str(
+            paciente.get("codigo_acesso", "")
+        ).strip().upper()
+
+        if codigo_paciente == codigo:
+            return paciente
+
+    return None
+
+
+def buscar_paciente_por_id(id_paciente, pacientes):
+
+    for paciente in pacientes:
+
+        if str(
+            paciente.get("id_paciente", "")
+        ).strip() == str(id_paciente).strip():
+
+            return paciente
+
+    return None
+
+
+def converter_numero(valor):
+
+    if valor is None:
+        return 0.0
+
+    texto = str(valor).strip()
+
+    if texto == "":
+        return 0.0
+
+    texto = texto.replace(",", ".")
+
+    try:
+        return float(texto)
+
+    except ValueError:
+        return 0.0
+
+
+def converter_data(data_texto):
+
+    try:
+
+        return datetime.strptime(
+            str(data_texto),
+            "%d/%m/%Y"
+        )
+
+    except ValueError:
+
+        return datetime.min
+
+
+def formatar_numero(numero, casas=1):
+
+    return f"{numero:.{casas}f}".replace(".", ",")
+
+
+# =========================================================
+# CARREGAMENTO DOS PACIENTES
+# =========================================================
+
+try:
+
+    pacientes = listar_pacientes()
+
+except Exception as erro:
+
+    st.error(
+        "Não foi possível acessar o Google Sheets."
+    )
+
+    st.exception(erro)
+
+    st.stop()
+
+
+# =========================================================
+# CABEÇALHO
+# =========================================================
+
+st.title("📊 Evolução Nutricional")
+
+st.write(
+    "Escolha como deseja acessar o sistema:"
+)
+
+
+# =========================================================
+# BOTÕES PRINCIPAIS
+# =========================================================
+
+col1, col2 = st.columns(2)
+
+
+with col1:
+
+    if st.button(
+        "👤 Paciente",
+        use_container_width=True
+    ):
+
+        st.session_state["area"] = "paciente"
+
+
+with col2:
+
+    if st.button(
+        "🩺 Profissional",
+        use_container_width=True
+    ):
+
+        st.session_state["area"] = "profissional"
+
+
+# =========================================================
+# ÁREA DO PACIENTE
+# =========================================================
+
+if st.session_state.get("area") == "paciente":
+
+    st.divider()
+
+    st.subheader("👤 Área do Paciente")
+
+
+    # -----------------------------------------------------
+    # LOGIN DO PACIENTE
+    # -----------------------------------------------------
+
+    if "paciente_logado_id" not in st.session_state:
+
+        codigo = st.text_input(
+            "Código de acesso",
+            placeholder="Ex.: X7MP42"
+        )
+
+        if st.button(
+            "Acessar",
+            type="primary"
+        ):
+
+            if not codigo:
+
+                st.warning(
+                    "Informe seu código de acesso."
+                )
+
+            else:
+
+                paciente = buscar_paciente_por_codigo(
+                    codigo,
+                    pacientes
+                )
+
+                if paciente:
+
+                    st.session_state[
+                        "paciente_logado_id"
+                    ] = paciente["id_paciente"]
+
+                    st.rerun()
+
+                else:
+
+                    st.error(
+                        "Código de acesso não encontrado."
+                    )
+
+
+    # -----------------------------------------------------
+    # PAINEL DO PACIENTE
+    # -----------------------------------------------------
+
+    else:
+
+        paciente = buscar_paciente_por_id(
+            st.session_state["paciente_logado_id"],
+            pacientes
+        )
+
+        if paciente is None:
+
+            st.error(
+                "Paciente não encontrado."
+            )
+
+            del st.session_state[
+                "paciente_logado_id"
+            ]
+
+            st.stop()
+
+
+        col_nome, col_sair = st.columns(
+            [4, 1]
+        )
+
+        with col_nome:
+
+            st.write(
+                f"### Olá, {paciente['nome']} 👋"
+            )
+
+        with col_sair:
+
+            if st.button(
+                "Sair",
+                key="sair_paciente"
+            ):
+
+                del st.session_state[
+                    "paciente_logado_id"
+                ]
+
+                st.session_state["area"] = None
+
+                st.rerun()
+
+
+        try:
+
+            pesagens_paciente = (
+                listar_pesagens_por_paciente(
+                    paciente["id_paciente"]
+                )
+            )
+
+
+            if not pesagens_paciente:
+
+                st.info(
+                    "Ainda não existem avaliações cadastradas."
+                )
+
+
+            else:
+
+                # -----------------------------------------
+                # ORDENAR POR DATA
+                # -----------------------------------------
+
+                pesagens_paciente = sorted(
+                    pesagens_paciente,
+                    key=lambda x: converter_data(
+                        x.get("data", "")
+                    )
+                )
+
+
+                primeira = pesagens_paciente[0]
+
+                ultima = pesagens_paciente[-1]
+
+
+                # -----------------------------------------
+                # VALORES
+                # -----------------------------------------
+
+                peso_inicial = converter_numero(
+                    primeira["peso_kg"]
+                )
+
+                peso_atual = converter_numero(
+                    ultima["peso_kg"]
+                )
+
+                gordura_inicial = converter_numero(
+                    primeira["gordura_pct"]
+                )
+
+                gordura_atual = converter_numero(
+                    ultima["gordura_pct"]
+                )
+
+                musculo_inicial = converter_numero(
+                    primeira["musculo_pct"]
+                )
+
+                musculo_atual = converter_numero(
+                    ultima["musculo_pct"]
+                )
+
+                imc_atual = converter_numero(
+                    ultima["imc"]
+                )
+
+
+                # -----------------------------------------
+                # ÚLTIMA AVALIAÇÃO
+                # -----------------------------------------
+
+                st.write("## Última avaliação")
+
+                st.caption(
+                    f"Avaliação realizada em "
+                    f"{ultima['data']}"
+                )
+
+
+                col1, col2 = st.columns(2)
+
+
+                with col1:
+
+                    st.metric(
+                        "⚖️ Peso",
+                        f"{formatar_numero(peso_atual)} kg",
+                        f"{formatar_numero(
+                            peso_atual - peso_inicial
+                        )} kg",
+                        delta_color="off"
+                    )
+
+
+                    st.metric(
+                        "🔥 Gordura corporal",
+                        f"{formatar_numero(
+                            gordura_atual
+                        )} %",
+                        f"{formatar_numero(
+                            gordura_atual -
+                            gordura_inicial
+                        )} p.p.",
+                        delta_color="off"
+                    )
+
+
+                with col2:
+
+                    st.metric(
+                        "📐 IMC",
+                        formatar_numero(
+                            imc_atual
+                        )
+                    )
+
+
+                    st.metric(
+                        "💪 Músculo",
+                        f"{formatar_numero(
+                            musculo_atual
+                        )} %",
+                        f"{formatar_numero(
+                            musculo_atual -
+                            musculo_inicial
+                        )} p.p.",
+                        delta_color="off"
+                    )
+
+
+                # -----------------------------------------
+                # RESUMO
+                # -----------------------------------------
+
+                st.divider()
+
+                st.write("## Evolução geral")
+
+                st.write(
+                    f"**Avaliações registradas:** "
+                    f"{len(pesagens_paciente)}"
+                )
+
+                st.write(
+                    f"**Primeira avaliação:** "
+                    f"{primeira['data']}"
+                )
+
+                st.write(
+                    f"**Última avaliação:** "
+                    f"{ultima['data']}"
+                )
+
+
+                # -----------------------------------------
+                # DATAFRAME DOS GRÁFICOS
+                # -----------------------------------------
+
+                dados_grafico = []
+
+                for pesagem in pesagens_paciente:
+
+                    dados_grafico.append(
+                        {
+                            "Data": converter_data(
+                                pesagem["data"]
+                            ),
+                            "Peso": converter_numero(
+                                pesagem["peso_kg"]
+                            ),
+                            "Gordura": converter_numero(
+                                pesagem["gordura_pct"]
+                            ),
+                            "Músculo": converter_numero(
+                                pesagem["musculo_pct"]
+                            ),
+                        }
+                    )
+
+
+                df = pd.DataFrame(
+                    dados_grafico
+                )
+
+
+                # -----------------------------------------
+                # GRÁFICO PESO
+                # -----------------------------------------
+
+                st.divider()
+
+                st.write(
+                    "## 📉 Evolução do peso"
+                )
+
+                fig_peso = px.line(
+                    df,
+                    x="Data",
+                    y="Peso",
+                    markers=True,
+                    labels={
+                        "Data": "Data",
+                        "Peso": "Peso (kg)"
+                    }
+                )
+
+                fig_peso.update_layout(
+                    yaxis_title="Peso (kg)",
+                    xaxis_title=""
+                )
+
+                st.plotly_chart(
+                    fig_peso,
+                    use_container_width=True
+                )
+
+
+                # -----------------------------------------
+                # GRÁFICO GORDURA
+                # -----------------------------------------
+
+                st.write(
+                    "## 🔥 Evolução da gordura corporal"
+                )
+
+                fig_gordura = px.line(
+                    df,
+                    x="Data",
+                    y="Gordura",
+                    markers=True,
+                    labels={
+                        "Data": "Data",
+                        "Gordura": "Gordura (%)"
+                    }
+                )
+
+                fig_gordura.update_layout(
+                    yaxis_title="Gordura (%)",
+                    xaxis_title=""
+                )
+
+                st.plotly_chart(
+                    fig_gordura,
+                    use_container_width=True
+                )
+
+
+                # -----------------------------------------
+                # GRÁFICO MÚSCULO
+                # -----------------------------------------
+
+                st.write(
+                    "## 💪 Evolução muscular"
+                )
+
+                fig_musculo = px.line(
+                    df,
+                    x="Data",
+                    y="Músculo",
+                    markers=True,
+                    labels={
+                        "Data": "Data",
+                        "Músculo": "Músculo (%)"
+                    }
+                )
+
+                fig_musculo.update_layout(
+                    yaxis_title="Músculo (%)",
+                    xaxis_title=""
+                )
+
+                st.plotly_chart(
+                    fig_musculo,
+                    use_container_width=True
+                )
+
+
+                # -----------------------------------------
+                # HISTÓRICO
+                # -----------------------------------------
+
+                st.divider()
+
+                st.write("## 📋 Histórico")
+
+                dados_historico = []
+
+                for pesagem in reversed(
+                    pesagens_paciente
+                ):
+
+                    dados_historico.append(
+                        {
+                            "Data":
+                                pesagem["data"],
+
+                            "Peso (kg)":
+                                pesagem["peso_kg"],
+
+                            "IMC":
+                                pesagem["imc"],
+
+                            "Gordura (%)":
+                                pesagem["gordura_pct"],
+
+                            "Músculo (%)":
+                                pesagem["musculo_pct"],
+
+                            "Cintura (cm)":
+                                pesagem["cintura_cm"],
+                        }
+                    )
+
+
+                st.dataframe(
+                    dados_historico,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+
+        except Exception as erro:
+
+            st.error(
+                "Não foi possível carregar as avaliações."
+            )
+
+            st.exception(erro)
+
+
+# =========================================================
+# ÁREA PROFISSIONAL
+# =========================================================
+
+elif st.session_state.get("area") == "profissional":
+
+    st.divider()
+
+    st.subheader(
+        "🩺 Área Profissional"
+    )
+
+
+    # =====================================================
+    # LOGIN PROFISSIONAL
+    # =====================================================
+
+    if not st.session_state.get(
+        "profissional_logado",
+        False
+    ):
+
+        st.write(
+            "Acesso exclusivo para o profissional."
+        )
+
+        senha = st.text_input(
+            "Senha",
+            type="password",
+            placeholder="Digite a senha profissional"
+        )
+
+
+        col_entrar, col_voltar = st.columns(2)
+
+
+        with col_entrar:
+
+            if st.button(
+                "Entrar",
+                type="primary",
+                use_container_width=True
+            ):
+
+                try:
+
+                    senha_correta = st.secrets[
+                        "senha_profissional"
+                    ]
+
+                except Exception:
+
+                    st.error(
+                        "A senha profissional não foi "
+                        "configurada no secrets.toml."
+                    )
+
+                    st.stop()
+
+
+                if senha == senha_correta:
+
+                    st.session_state[
+                        "profissional_logado"
+                    ] = True
+
+                    st.rerun()
+
+                else:
+
+                    st.error(
+                        "Senha incorreta."
+                    )
+
+
+        with col_voltar:
+
+            if st.button(
+                "Voltar",
+                use_container_width=True
+            ):
+
+                st.session_state["area"] = None
+
+                st.rerun()
+
+
+    # =====================================================
+    # PROFISSIONAL AUTENTICADO
+    # =====================================================
+
+    else:
+
+        col_titulo, col_sair = st.columns(
+            [4, 1]
+        )
+
+
+        with col_titulo:
+
+            st.success(
+                "Acesso profissional autorizado."
+            )
+
+
+        with col_sair:
+
+            if st.button(
+                "Sair",
+                key="sair_profissional"
+            ):
+
+                st.session_state[
+                    "profissional_logado"
+                ] = False
+
+                st.session_state[
+                    "area"
+                ] = None
+
+                st.rerun()
+
+
+        opcao = st.radio(
+            "Escolha uma opção:",
+            [
+                "Cadastrar paciente",
+                "Consultar pacientes",
+                "Nova pesagem",
+                "Histórico"
+            ]
+        )
+
+
+        # =================================================
+        # CADASTRAR PACIENTE
+        # =================================================
+
+        if opcao == "Cadastrar paciente":
+
+            st.write(
+                "### ➕ Cadastro de paciente"
+            )
+
+
+            nome = st.text_input(
+                "Nome completo"
+            )
+
+
+            sexo = st.selectbox(
+                "Sexo",
+                [
+                    "",
+                    "Feminino",
+                    "Masculino"
+                ]
+            )
+
+
+            nascimento = st.date_input(
+                "Data de nascimento",
+                value=None
+            )
+
+
+            altura = st.number_input(
+                "Altura (cm)",
+                min_value=0.0,
+                max_value=250.0,
+                step=0.1,
+                format="%.1f"
+            )
+
+
+            nivel_atividade = st.selectbox(
+                "Nível de atividade",
+                [
+                    "",
+                    "Sedentário",
+                    "Leve",
+                    "Moderado",
+                    "Ativo",
+                    "Muito ativo"
+                ]
+            )
+
+
+            telefone = st.text_input(
+                "Telefone"
+            )
+
+
+            email = st.text_input(
+                "E-mail"
+            )
+
+
+            if st.button(
+                "Cadastrar paciente",
+                type="primary"
+            ):
+
+
+                if not nome.strip():
+
+                    st.warning(
+                        "Informe o nome do paciente."
+                    )
+
+
+                elif altura <= 0:
+
+                    st.warning(
+                        "Informe uma altura válida."
+                    )
+
+
+                else:
+
+                    novo_id = gerar_id_paciente(
+                        pacientes
+                    )
+
+                    novo_codigo = gerar_codigo_acesso(
+                        pacientes
+                    )
+
+
+                    novo_paciente = {
+
+                        "id_paciente":
+                            novo_id,
+
+                        "nome":
+                            nome.strip(),
+
+                        "codigo_acesso":
+                            novo_codigo,
+
+                        "sexo":
+                            sexo,
+
+                        "nascimento":
+                            (
+                                nascimento.strftime(
+                                    "%d/%m/%Y"
+                                )
+                                if nascimento
+                                else ""
+                            ),
+
+                        "altura_cm":
+                            altura,
+
+                        "nivel_atividade":
+                            nivel_atividade,
+
+                        "telefone":
+                            telefone.strip(),
+
+                        "email":
+                            email.strip(),
+
+                        "data_cadastro":
+                            date.today().strftime(
+                                "%d/%m/%Y"
+                            ),
+
+                        "ativo":
+                            "SIM"
+                    }
+
+
+                    try:
+
+                        adicionar_paciente(
+                            novo_paciente
+                        )
+
+
+                        st.success(
+                            "Paciente cadastrado "
+                            "com sucesso!"
+                        )
+
+
+                        st.write(
+                            f"Paciente: "
+                            f"**{novo_paciente['nome']}**"
+                        )
+
+
+                        st.write(
+                            f"ID interno: "
+                            f"`{novo_id}`"
+                        )
+
+
+                        st.write(
+                            f"Código de acesso: "
+                            f"`{novo_codigo}`"
+                        )
+
+
+                        st.info(
+                            "Cadastro gravado no Google Sheets."
+                        )
+
+
+                    except Exception as erro:
+
+                        st.error(
+                            "Erro ao cadastrar o paciente."
+                        )
+
+                        st.exception(erro)
+
+
+        # =================================================
+        # CONSULTAR PACIENTES
+        # =================================================
+
+        elif opcao == "Consultar pacientes":
+
+            st.write(
+                "### 🔎 Consultar pacientes"
+            )
+
+
+            busca = st.text_input(
+                "Pesquisar pelo nome"
+            )
+
+
+            if busca:
+
+                encontrados = [
+
+                    paciente
+
+                    for paciente in pacientes
+
+                    if busca.lower()
+
+                    in str(
+                        paciente.get(
+                            "nome",
+                            ""
+                        )
+                    ).lower()
+                ]
+
+
+            else:
+
+                encontrados = pacientes
+
+
+            if encontrados:
+
+                st.write(
+                    f"Pacientes encontrados: "
+                    f"**{len(encontrados)}**"
+                )
+
+
+                for paciente in encontrados:
+
+                    st.divider()
+
+
+                    st.write(
+                        f"### "
+                        f"{paciente.get('nome', '')}"
+                    )
+
+
+                    st.write(
+                        f"**ID:** "
+                        f"`{paciente.get('id_paciente', '')}`"
+                    )
+
+
+                    st.write(
+                        f"**Código de acesso:** "
+                        f"`{paciente.get('codigo_acesso', '')}`"
+                    )
+
+
+                    st.write(
+                        f"**Telefone:** "
+                        f"{paciente.get('telefone', '-')}"
+                    )
+
+
+                    st.write(
+                        f"**E-mail:** "
+                        f"{paciente.get('email', '-')}"
+                    )
+
+
+                    st.write(
+                        f"**Altura:** "
+                        f"{paciente.get('altura_cm', '-')} cm"
+                    )
+
+
+            else:
+
+                st.warning(
+                    "Nenhum paciente encontrado."
+                )
+
+
+        # =================================================
+        # NOVA PESAGEM
+        # =================================================
+
+        elif opcao == "Nova pesagem":
+
+            st.write(
+                "### ⚖️ Nova pesagem"
+            )
+
+
+            if not pacientes:
+
+                st.warning(
+                    "Nenhum paciente cadastrado."
+                )
+
+
+            else:
+
+                opcoes_pacientes = {
+
+                    f"{p['nome']} - "
+                    f"{p['id_paciente']}": p
+
+                    for p in pacientes
+                }
+
+
+                paciente_selecionado = (
+                    st.selectbox(
+                        "Paciente",
+                        list(
+                            opcoes_pacientes.keys()
+                        )
+                    )
+                )
+
+
+                paciente = opcoes_pacientes[
+                    paciente_selecionado
+                ]
+
+
+                data_pesagem = st.date_input(
+                    "Data da avaliação",
+                    value=date.today()
+                )
+
+
+                st.write(
+                    "#### Bioimpedância"
+                )
+
+
+                peso = st.number_input(
+                    "Peso (kg)",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+
+                imc = st.number_input(
+                    "IMC",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+
+                gordura = st.number_input(
+                    "Gordura corporal (%)",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+
+                agua = st.number_input(
+                    "Água corporal (%)",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+
+                musculo = st.number_input(
+                    "Músculo (%)",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+
+                massa_ossea = st.number_input(
+                    "Massa óssea (kg)",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+
+                gordura_visceral = st.number_input(
+                    "Gordura visceral",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+
+                gordura_abdominal = st.number_input(
+                    "Gordura abdominal",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+
+                bmr = st.number_input(
+                    "BMR (kcal)",
+                    min_value=0,
+                    step=1
+                )
+
+
+                amr = st.number_input(
+                    "AMR (kcal)",
+                    min_value=0,
+                    step=1
+                )
+
+
+                st.write(
+                    "#### Medidas corporais"
+                )
+
+
+                cintura = st.number_input(
+                    "Cintura (cm)",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+
+                abdomen = st.number_input(
+                    "Abdômen (cm)",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+
+                quadril = st.number_input(
+                    "Quadril (cm)",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+
+                braco = st.number_input(
+                    "Braço (cm)",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+
+                coxa = st.number_input(
+                    "Coxa (cm)",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+
+                observacoes = st.text_area(
+                    "Observações"
+                )
+
+
+                if st.button(
+                    "Salvar pesagem",
+                    type="primary"
+                ):
+
+
+                    if peso <= 0:
+
+                        st.warning(
+                            "Informe o peso "
+                            "do paciente."
+                        )
+
+
+                    else:
+
+                        try:
+
+                            pesagens = listar_pesagens()
+
+
+                            nova_pesagem = {
+
+                                "id_pesagem":
+                                    gerar_id_pesagem(
+                                        pesagens
+                                    ),
+
+                                "id_paciente":
+                                    paciente[
+                                        "id_paciente"
+                                    ],
+
+                                "data":
+                                    data_pesagem.strftime(
+                                        "%d/%m/%Y"
+                                    ),
+
+                                "peso_kg":
+                                    peso,
+
+                                "imc":
+                                    imc,
+
+                                "gordura_pct":
+                                    gordura,
+
+                                "agua_pct":
+                                    agua,
+
+                                "musculo_pct":
+                                    musculo,
+
+                                "massa_ossea_kg":
+                                    massa_ossea,
+
+                                "gordura_visceral":
+                                    gordura_visceral,
+
+                                "gordura_abdominal":
+                                    gordura_abdominal,
+
+                                "bmr_kcal":
+                                    bmr,
+
+                                "amr_kcal":
+                                    amr,
+
+                                "cintura_cm":
+                                    cintura,
+
+                                "abdomen_cm":
+                                    abdomen,
+
+                                "quadril_cm":
+                                    quadril,
+
+                                "braco_cm":
+                                    braco,
+
+                                "coxa_cm":
+                                    coxa,
+
+                                "observacoes":
+                                    observacoes.strip()
+                            }
+
+
+                            adicionar_pesagem(
+                                nova_pesagem
+                            )
+
+
+                            st.success(
+                                "Pesagem registrada "
+                                "com sucesso!"
+                            )
+
+
+                            st.write(
+                                f"ID da avaliação: "
+                                f"`{nova_pesagem['id_pesagem']}`"
+                            )
+
+
+                            st.write(
+                                f"Paciente: "
+                                f"**{paciente['nome']}**"
+                            )
+
+
+                        except Exception as erro:
+
+                            st.error(
+                                "Erro ao salvar a pesagem."
+                            )
+
+                            st.exception(erro)
+
+
+        # =================================================
+        # HISTÓRICO PROFISSIONAL
+        # =================================================
+
+        elif opcao == "Histórico":
+
+            st.write(
+                "### 📈 Histórico"
+            )
+
+
+            if not pacientes:
+
+                st.warning(
+                    "Nenhum paciente cadastrado."
+                )
+
+
+            else:
+
+                opcoes_pacientes = {
+
+                    f"{p['nome']} - "
+                    f"{p['id_paciente']}": p
+
+                    for p in pacientes
+                }
+
+
+                paciente_selecionado = (
+                    st.selectbox(
+                        "Selecione o paciente",
+                        list(
+                            opcoes_pacientes.keys()
+                        ),
+                        key="historico_profissional"
+                    )
+                )
+
+
+                paciente = opcoes_pacientes[
+                    paciente_selecionado
+                ]
+
+
+                try:
+
+                    pesagens = (
+                        listar_pesagens_por_paciente(
+                            paciente["id_paciente"]
+                        )
+                    )
+
+
+                    if not pesagens:
+
+                        st.info(
+                            "Esse paciente ainda "
+                            "não possui avaliações."
+                        )
+
+
+                    else:
+
+                        pesagens = sorted(
+                            pesagens,
+                            key=lambda x: converter_data(
+                                x.get("data", "")
+                            ),
+                            reverse=True
+                        )
+
+
+                        dados = []
+
+
+                        for pesagem in pesagens:
+
+                            dados.append(
+                                {
+                                    "Data":
+                                        pesagem["data"],
+
+                                    "Peso":
+                                        pesagem["peso_kg"],
+
+                                    "IMC":
+                                        pesagem["imc"],
+
+                                    "Gordura (%)":
+                                        pesagem[
+                                            "gordura_pct"
+                                        ],
+
+                                    "Músculo (%)":
+                                        pesagem[
+                                            "musculo_pct"
+                                        ],
+
+                                    "Cintura":
+                                        pesagem[
+                                            "cintura_cm"
+                                        ],
+                                }
+                            )
+
+
+                        st.dataframe(
+                            dados,
+                            use_container_width=True,
+                            hide_index=True
+                        )
+
+
+                except Exception as erro:
+
+                    st.error(
+                        "Erro ao carregar o histórico."
+                    )
+
+                    st.exception(erro)
