@@ -1,18 +1,43 @@
-import streamlit as st
+import os
 import random
 import string
+
+from io import BytesIO
+from datetime import date, datetime
+
+import streamlit as st
 import pandas as pd
 import plotly.express as px
+import matplotlib.pyplot as plt
 
-from datetime import date, datetime
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+    Image,
+)
 
 from google_sheets import (
     listar_pacientes,
     adicionar_paciente,
     listar_pesagens,
     adicionar_pesagem,
-    listar_pesagens_por_paciente
+    listar_pesagens_por_paciente,
 )
+
+
+# =========================================================
+# IDENTIDADE PROFISSIONAL
+# =========================================================
+
+NOME_PROFISSIONAL = "Nutricionista Andrea Cella"
+SUBTITULO_APP = "Acompanhamento de evolução corporal"
 
 
 # =========================================================
@@ -20,9 +45,51 @@ from google_sheets import (
 # =========================================================
 
 st.set_page_config(
-    page_title="Evolução Nutricional",
-    page_icon="📊",
-    layout="centered"
+    page_title=NOME_PROFISSIONAL,
+    page_icon="🥗",
+    layout="centered",
+)
+
+
+# =========================================================
+# ESTILO
+# =========================================================
+
+st.markdown(
+    """
+    <style>
+
+    div.stButton > button {
+        min-height: 3.2rem;
+        font-size: 1.05rem;
+        font-weight: 600;
+        border-radius: 10px;
+        margin-bottom: 0.25rem;
+    }
+
+    div[data-baseweb="input"] input {
+        min-height: 2.8rem;
+        font-size: 1rem;
+    }
+
+    .cabecalho-profissional {
+        text-align: center;
+        margin-bottom: 1.4rem;
+    }
+
+    .cabecalho-profissional h1 {
+        margin-bottom: 0.2rem;
+    }
+
+    .cabecalho-profissional p {
+        color: #777;
+        font-size: 1.05rem;
+        margin-top: 0;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 
@@ -31,7 +98,6 @@ st.set_page_config(
 # =========================================================
 
 def gerar_codigo_acesso(pacientes):
-
     caracteres = string.ascii_uppercase + string.digits
 
     codigos_existentes = {
@@ -40,7 +106,6 @@ def gerar_codigo_acesso(pacientes):
     }
 
     while True:
-
         codigo = "".join(
             random.choices(caracteres, k=6)
         )
@@ -50,21 +115,17 @@ def gerar_codigo_acesso(pacientes):
 
 
 def gerar_id_paciente(pacientes):
-
     numeros = []
 
     for paciente in pacientes:
-
         id_atual = str(
             paciente.get("id_paciente", "")
         )
 
         try:
-
             numero = int(
                 id_atual.replace("P", "")
             )
-
             numeros.append(numero)
 
         except ValueError:
@@ -79,21 +140,17 @@ def gerar_id_paciente(pacientes):
 
 
 def gerar_id_pesagem(pesagens):
-
     numeros = []
 
     for pesagem in pesagens:
-
         id_atual = str(
             pesagem.get("id_pesagem", "")
         )
 
         try:
-
             numero = int(
                 id_atual.replace("AV", "")
             )
-
             numeros.append(numero)
 
         except ValueError:
@@ -108,11 +165,9 @@ def gerar_id_pesagem(pesagens):
 
 
 def buscar_paciente_por_codigo(codigo, pacientes):
-
     codigo = codigo.strip().upper()
 
     for paciente in pacientes:
-
         codigo_paciente = str(
             paciente.get("codigo_acesso", "")
         ).strip().upper()
@@ -124,20 +179,16 @@ def buscar_paciente_por_codigo(codigo, pacientes):
 
 
 def buscar_paciente_por_id(id_paciente, pacientes):
-
     for paciente in pacientes:
-
         if str(
             paciente.get("id_paciente", "")
         ).strip() == str(id_paciente).strip():
-
             return paciente
 
     return None
 
 
 def converter_numero(valor):
-
     if valor is None:
         return 0.0
 
@@ -156,22 +207,475 @@ def converter_numero(valor):
 
 
 def converter_data(data_texto):
-
     try:
-
         return datetime.strptime(
             str(data_texto),
-            "%d/%m/%Y"
+            "%d/%m/%Y",
         )
 
     except ValueError:
-
         return datetime.min
 
 
 def formatar_numero(numero, casas=1):
-
     return f"{numero:.{casas}f}".replace(".", ",")
+
+
+# =========================================================
+# GRÁFICOS PARA PDF
+# =========================================================
+
+def criar_grafico_pdf(
+    pesagens,
+    campo,
+    titulo,
+    unidade,
+):
+    datas = [
+        pesagem["data"]
+        for pesagem in pesagens
+    ]
+
+    valores = [
+        converter_numero(
+            pesagem.get(campo, 0)
+        )
+        for pesagem in pesagens
+    ]
+
+    fig, ax = plt.subplots(
+        figsize=(7, 3)
+    )
+
+    ax.plot(
+        datas,
+        valores,
+        marker="o",
+    )
+
+    ax.set_title(titulo)
+    ax.set_ylabel(unidade)
+
+    ax.grid(
+        True,
+        alpha=0.25,
+    )
+
+    plt.xticks(
+        rotation=30,
+        ha="right",
+    )
+
+    plt.tight_layout()
+
+    imagem = BytesIO()
+
+    fig.savefig(
+        imagem,
+        format="png",
+        dpi=150,
+        bbox_inches="tight",
+    )
+
+    plt.close(fig)
+
+    imagem.seek(0)
+
+    return imagem
+
+
+# =========================================================
+# GERAR PDF DO PACIENTE
+# =========================================================
+
+def gerar_pdf_paciente(
+    paciente,
+    pesagens,
+):
+    buffer = BytesIO()
+
+    documento = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=1.5 * cm,
+        leftMargin=1.5 * cm,
+        topMargin=1.5 * cm,
+        bottomMargin=1.5 * cm,
+    )
+
+    estilos = getSampleStyleSheet()
+
+    elementos = []
+
+    # LOGOTIPO
+    if os.path.exists("logo.png"):
+        elementos.append(
+            Image(
+                "logo.png",
+                width=5 * cm,
+                height=2.5 * cm,
+            )
+        )
+
+        elementos.append(
+            Spacer(
+                1,
+                0.4 * cm,
+            )
+        )
+
+    elementos.append(
+        Paragraph(
+            NOME_PROFISSIONAL,
+            estilos["Title"],
+        )
+    )
+
+    elementos.append(
+        Paragraph(
+            "Relatório de evolução corporal",
+            estilos["Heading2"],
+        )
+    )
+
+    elementos.append(
+        Spacer(
+            1,
+            0.5 * cm,
+        )
+    )
+
+    elementos.append(
+        Paragraph(
+            f"<b>Paciente:</b> {paciente['nome']}",
+            estilos["Normal"],
+        )
+    )
+
+    elementos.append(
+        Paragraph(
+            f"<b>Data do relatório:</b> "
+            f"{date.today().strftime('%d/%m/%Y')}",
+            estilos["Normal"],
+        )
+    )
+
+    elementos.append(
+        Spacer(
+            1,
+            0.7 * cm,
+        )
+    )
+
+    ultima = pesagens[-1]
+
+    # -----------------------------------------------------
+    # ÚLTIMA AVALIAÇÃO
+    # -----------------------------------------------------
+
+    elementos.append(
+        Paragraph(
+            "Última avaliação",
+            estilos["Heading2"],
+        )
+    )
+
+    dados_ultima = [
+        ["Indicador", "Resultado"],
+        [
+            "Data",
+            ultima["data"],
+        ],
+        [
+            "Peso",
+            f"{ultima['peso_kg']} kg",
+        ],
+        [
+            "IMC",
+            ultima["imc"],
+        ],
+        [
+            "Gordura corporal",
+            f"{ultima['gordura_pct']} %",
+        ],
+        [
+            "Água corporal",
+            f"{ultima['agua_pct']} %",
+        ],
+        [
+            "Músculo",
+            f"{ultima['musculo_pct']} %",
+        ],
+        [
+            "Massa óssea",
+            f"{ultima['massa_ossea_kg']} kg",
+        ],
+        [
+            "Gordura visceral",
+            ultima["gordura_visceral"],
+        ],
+        [
+            "Gordura abdominal",
+            ultima["gordura_abdominal"],
+        ],
+        [
+            "Cintura",
+            f"{ultima['cintura_cm']} cm",
+        ],
+        [
+            "Abdômen",
+            f"{ultima['abdomen_cm']} cm",
+        ],
+        [
+            "Quadril",
+            f"{ultima['quadril_cm']} cm",
+        ],
+        [
+            "Braço",
+            f"{ultima['braco_cm']} cm",
+        ],
+        [
+            "Coxa",
+            f"{ultima['coxa_cm']} cm",
+        ],
+    ]
+
+    tabela = Table(
+        dados_ultima,
+        colWidths=[
+            8 * cm,
+            8 * cm,
+        ],
+    )
+
+    tabela.setStyle(
+        TableStyle(
+            [
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, 0),
+                    colors.HexColor("#E8F2ED"),
+                ),
+                (
+                    "FONTNAME",
+                    (0, 0),
+                    (-1, 0),
+                    "Helvetica-Bold",
+                ),
+                (
+                    "GRID",
+                    (0, 0),
+                    (-1, -1),
+                    0.3,
+                    colors.lightgrey,
+                ),
+                (
+                    "PADDING",
+                    (0, 0),
+                    (-1, -1),
+                    7,
+                ),
+            ]
+        )
+    )
+
+    elementos.append(tabela)
+
+    elementos.append(
+        Spacer(
+            1,
+            0.8 * cm,
+        )
+    )
+
+    # -----------------------------------------------------
+    # GRÁFICO PESO
+    # -----------------------------------------------------
+
+    grafico_peso = criar_grafico_pdf(
+        pesagens,
+        "peso_kg",
+        "Evolução do peso",
+        "kg",
+    )
+
+    elementos.append(
+        Paragraph(
+            "Evolução do peso",
+            estilos["Heading2"],
+        )
+    )
+
+    elementos.append(
+        Image(
+            grafico_peso,
+            width=17 * cm,
+            height=7 * cm,
+        )
+    )
+
+    elementos.append(
+        Spacer(
+            1,
+            0.5 * cm,
+        )
+    )
+
+    # -----------------------------------------------------
+    # GRÁFICO GORDURA
+    # -----------------------------------------------------
+
+    grafico_gordura = criar_grafico_pdf(
+        pesagens,
+        "gordura_pct",
+        "Evolução da gordura corporal",
+        "%",
+    )
+
+    elementos.append(
+        Paragraph(
+            "Evolução da gordura corporal",
+            estilos["Heading2"],
+        )
+    )
+
+    elementos.append(
+        Image(
+            grafico_gordura,
+            width=17 * cm,
+            height=7 * cm,
+        )
+    )
+
+    elementos.append(
+        Spacer(
+            1,
+            0.5 * cm,
+        )
+    )
+
+    # -----------------------------------------------------
+    # GRÁFICO MÚSCULO
+    # -----------------------------------------------------
+
+    grafico_musculo = criar_grafico_pdf(
+        pesagens,
+        "musculo_pct",
+        "Evolução muscular",
+        "%",
+    )
+
+    elementos.append(
+        Paragraph(
+            "Evolução muscular",
+            estilos["Heading2"],
+        )
+    )
+
+    elementos.append(
+        Image(
+            grafico_musculo,
+            width=17 * cm,
+            height=7 * cm,
+        )
+    )
+
+    elementos.append(
+        Spacer(
+            1,
+            0.7 * cm,
+        )
+    )
+
+    # -----------------------------------------------------
+    # HISTÓRICO
+    # -----------------------------------------------------
+
+    elementos.append(
+        Paragraph(
+            "Histórico de avaliações",
+            estilos["Heading2"],
+        )
+    )
+
+    dados_historico = [
+        [
+            "Data",
+            "Peso",
+            "IMC",
+            "Gordura",
+            "Músculo",
+        ]
+    ]
+
+    for pesagem in reversed(
+        pesagens
+    ):
+        dados_historico.append(
+            [
+                pesagem["data"],
+                pesagem["peso_kg"],
+                pesagem["imc"],
+                pesagem["gordura_pct"],
+                pesagem["musculo_pct"],
+            ]
+        )
+
+    tabela_historico = Table(
+        dados_historico,
+        repeatRows=1,
+    )
+
+    tabela_historico.setStyle(
+        TableStyle(
+            [
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, 0),
+                    colors.HexColor("#E8F2ED"),
+                ),
+                (
+                    "FONTNAME",
+                    (0, 0),
+                    (-1, 0),
+                    "Helvetica-Bold",
+                ),
+                (
+                    "GRID",
+                    (0, 0),
+                    (-1, -1),
+                    0.3,
+                    colors.lightgrey,
+                ),
+                (
+                    "ALIGN",
+                    (1, 1),
+                    (-1, -1),
+                    "CENTER",
+                ),
+                (
+                    "PADDING",
+                    (0, 0),
+                    (-1, -1),
+                    5,
+                ),
+            ]
+        )
+    )
+
+    elementos.append(
+        tabela_historico
+    )
+
+    documento.build(
+        elementos
+    )
+
+    buffer.seek(0)
+
+    return buffer.getvalue()
 
 
 # =========================================================
@@ -179,11 +683,9 @@ def formatar_numero(numero, casas=1):
 # =========================================================
 
 try:
-
     pacientes = listar_pacientes()
 
 except Exception as erro:
-
     st.error(
         "Não foi possível acessar o Google Sheets."
     )
@@ -197,78 +699,123 @@ except Exception as erro:
 # CABEÇALHO
 # =========================================================
 
-st.title("📊 Evolução Nutricional")
+if os.path.exists("logo.png"):
 
-st.write(
-    "Escolha como deseja acessar o sistema:"
-)
+    col_logo1, col_logo2, col_logo3 = st.columns(
+        [1, 2, 1]
+    )
+
+    with col_logo2:
+        st.image(
+            "logo.png",
+            use_container_width=True,
+        )
+
+    st.markdown(
+        f"""
+        <div class="cabecalho-profissional">
+            <p>{SUBTITULO_APP}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+else:
+
+    st.markdown(
+        f"""
+        <div class="cabecalho-profissional">
+            <h1>{NOME_PROFISSIONAL}</h1>
+            <p>{SUBTITULO_APP}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # =========================================================
-# BOTÕES PRINCIPAIS
+# TELA INICIAL
 # =========================================================
 
-col1, col2 = st.columns(2)
+if not st.session_state.get("area"):
 
+    st.write(
+        "Acesse seus resultados de avaliações corporais."
+    )
 
-with col1:
+    st.write("")
 
     if st.button(
-        "👤 Paciente",
-        use_container_width=True
+        "👤 ACESSAR COMO PACIENTE",
+        type="primary",
+        use_container_width=True,
     ):
-
         st.session_state["area"] = "paciente"
+        st.rerun()
 
+    st.caption(
+        "Utilize o código de identificação fornecido pela nutricionista."
+    )
 
-with col2:
+    st.write("")
+    st.write("")
+    st.divider()
 
-    if st.button(
-        "🩺 Profissional",
-        use_container_width=True
-    ):
+    col_espaco, col_profissional = st.columns(
+        [2, 1]
+    )
 
-        st.session_state["area"] = "profissional"
+    with col_profissional:
+
+        if st.button(
+            "🩺 Área profissional",
+            use_container_width=True,
+        ):
+            st.session_state[
+                "area"
+            ] = "profissional"
+
+            st.rerun()
 
 
 # =========================================================
 # ÁREA DO PACIENTE
 # =========================================================
 
-if st.session_state.get("area") == "paciente":
+elif st.session_state.get("area") == "paciente":
 
-    st.divider()
-
-    st.subheader("👤 Área do Paciente")
-
+    st.subheader(
+        "👤 Área do Paciente"
+    )
 
     # -----------------------------------------------------
-    # LOGIN DO PACIENTE
+    # LOGIN
     # -----------------------------------------------------
 
     if "paciente_logado_id" not in st.session_state:
 
         codigo = st.text_input(
-            "Código de acesso",
-            placeholder="Ex.: X7MP42"
+            "Código de identificação",
+            placeholder="Ex.: X7MP42",
         )
 
         if st.button(
-            "Acessar",
-            type="primary"
+            "Acessar meus resultados",
+            type="primary",
+            use_container_width=True,
         ):
 
             if not codigo:
 
                 st.warning(
-                    "Informe seu código de acesso."
+                    "Informe seu código de identificação."
                 )
 
             else:
 
                 paciente = buscar_paciente_por_codigo(
                     codigo,
-                    pacientes
+                    pacientes,
                 )
 
                 if paciente:
@@ -282,8 +829,18 @@ if st.session_state.get("area") == "paciente":
                 else:
 
                     st.error(
-                        "Código de acesso não encontrado."
+                        "Código não encontrado. "
+                        "Confira o código informado."
                     )
+
+        if st.button(
+            "← Voltar",
+        ):
+            st.session_state[
+                "area"
+            ] = None
+
+            st.rerun()
 
 
     # -----------------------------------------------------
@@ -293,8 +850,10 @@ if st.session_state.get("area") == "paciente":
     else:
 
         paciente = buscar_paciente_por_id(
-            st.session_state["paciente_logado_id"],
-            pacientes
+            st.session_state[
+                "paciente_logado_id"
+            ],
+            pacientes,
         )
 
         if paciente is None:
@@ -308,7 +867,6 @@ if st.session_state.get("area") == "paciente":
             ]
 
             st.stop()
-
 
         col_nome, col_sair = st.columns(
             [4, 1]
@@ -324,17 +882,19 @@ if st.session_state.get("area") == "paciente":
 
             if st.button(
                 "Sair",
-                key="sair_paciente"
+                key="sair_paciente",
+                use_container_width=True,
             ):
 
                 del st.session_state[
                     "paciente_logado_id"
                 ]
 
-                st.session_state["area"] = None
+                st.session_state[
+                    "area"
+                ] = None
 
                 st.rerun()
-
 
         try:
 
@@ -344,36 +904,43 @@ if st.session_state.get("area") == "paciente":
                 )
             )
 
-
             if not pesagens_paciente:
 
                 st.info(
                     "Ainda não existem avaliações cadastradas."
                 )
 
-
             else:
-
-                # -----------------------------------------
-                # ORDENAR POR DATA
-                # -----------------------------------------
 
                 pesagens_paciente = sorted(
                     pesagens_paciente,
                     key=lambda x: converter_data(
                         x.get("data", "")
-                    )
+                    ),
                 )
 
+                # -----------------------------------------
+                # PDF
+                # -----------------------------------------
+
+                pdf = gerar_pdf_paciente(
+                    paciente,
+                    pesagens_paciente,
+                )
+
+                st.download_button(
+                    label="📄 Baixar relatório em PDF",
+                    data=pdf,
+                    file_name=(
+                        f"evolucao_"
+                        f"{paciente['nome'].replace(' ', '_')}.pdf"
+                    ),
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
 
                 primeira = pesagens_paciente[0]
-
                 ultima = pesagens_paciente[-1]
-
-
-                # -----------------------------------------
-                # VALORES
-                # -----------------------------------------
 
                 peso_inicial = converter_numero(
                     primeira["peso_kg"]
@@ -403,21 +970,21 @@ if st.session_state.get("area") == "paciente":
                     ultima["imc"]
                 )
 
-
                 # -----------------------------------------
                 # ÚLTIMA AVALIAÇÃO
                 # -----------------------------------------
 
-                st.write("## Última avaliação")
+                st.divider()
 
-                st.caption(
-                    f"Avaliação realizada em "
-                    f"{ultima['data']}"
+                st.write(
+                    "## Última avaliação"
                 )
 
+                st.caption(
+                    f"Realizada em {ultima['data']}"
+                )
 
                 col1, col2 = st.columns(2)
-
 
                 with col1:
 
@@ -427,9 +994,8 @@ if st.session_state.get("area") == "paciente":
                         f"{formatar_numero(
                             peso_atual - peso_inicial
                         )} kg",
-                        delta_color="off"
+                        delta_color="off",
                     )
-
 
                     st.metric(
                         "🔥 Gordura corporal",
@@ -440,9 +1006,8 @@ if st.session_state.get("area") == "paciente":
                             gordura_atual -
                             gordura_inicial
                         )} p.p.",
-                        delta_color="off"
+                        delta_color="off",
                     )
-
 
                 with col2:
 
@@ -450,9 +1015,8 @@ if st.session_state.get("area") == "paciente":
                         "📐 IMC",
                         formatar_numero(
                             imc_atual
-                        )
+                        ),
                     )
-
 
                     st.metric(
                         "💪 Músculo",
@@ -463,17 +1027,18 @@ if st.session_state.get("area") == "paciente":
                             musculo_atual -
                             musculo_inicial
                         )} p.p.",
-                        delta_color="off"
+                        delta_color="off",
                     )
 
-
                 # -----------------------------------------
-                # RESUMO
+                # EVOLUÇÃO GERAL
                 # -----------------------------------------
 
                 st.divider()
 
-                st.write("## Evolução geral")
+                st.write(
+                    "## Evolução geral"
+                )
 
                 st.write(
                     f"**Avaliações registradas:** "
@@ -490,9 +1055,8 @@ if st.session_state.get("area") == "paciente":
                     f"{ultima['data']}"
                 )
 
-
                 # -----------------------------------------
-                # DATAFRAME DOS GRÁFICOS
+                # DATAFRAME
                 # -----------------------------------------
 
                 dados_grafico = []
@@ -516,11 +1080,9 @@ if st.session_state.get("area") == "paciente":
                         }
                     )
 
-
                 df = pd.DataFrame(
                     dados_grafico
                 )
-
 
                 # -----------------------------------------
                 # GRÁFICO PESO
@@ -539,20 +1101,19 @@ if st.session_state.get("area") == "paciente":
                     markers=True,
                     labels={
                         "Data": "Data",
-                        "Peso": "Peso (kg)"
-                    }
+                        "Peso": "Peso (kg)",
+                    },
                 )
 
                 fig_peso.update_layout(
                     yaxis_title="Peso (kg)",
-                    xaxis_title=""
+                    xaxis_title="",
                 )
 
                 st.plotly_chart(
                     fig_peso,
-                    use_container_width=True
+                    use_container_width=True,
                 )
-
 
                 # -----------------------------------------
                 # GRÁFICO GORDURA
@@ -569,20 +1130,19 @@ if st.session_state.get("area") == "paciente":
                     markers=True,
                     labels={
                         "Data": "Data",
-                        "Gordura": "Gordura (%)"
-                    }
+                        "Gordura": "Gordura (%)",
+                    },
                 )
 
                 fig_gordura.update_layout(
                     yaxis_title="Gordura (%)",
-                    xaxis_title=""
+                    xaxis_title="",
                 )
 
                 st.plotly_chart(
                     fig_gordura,
-                    use_container_width=True
+                    use_container_width=True,
                 )
-
 
                 # -----------------------------------------
                 # GRÁFICO MÚSCULO
@@ -599,20 +1159,19 @@ if st.session_state.get("area") == "paciente":
                     markers=True,
                     labels={
                         "Data": "Data",
-                        "Músculo": "Músculo (%)"
-                    }
+                        "Músculo": "Músculo (%)",
+                    },
                 )
 
                 fig_musculo.update_layout(
                     yaxis_title="Músculo (%)",
-                    xaxis_title=""
+                    xaxis_title="",
                 )
 
                 st.plotly_chart(
                     fig_musculo,
-                    use_container_width=True
+                    use_container_width=True,
                 )
-
 
                 # -----------------------------------------
                 # HISTÓRICO
@@ -620,7 +1179,9 @@ if st.session_state.get("area") == "paciente":
 
                 st.divider()
 
-                st.write("## 📋 Histórico")
+                st.write(
+                    "## 📋 Histórico"
+                )
 
                 dados_historico = []
 
@@ -650,13 +1211,11 @@ if st.session_state.get("area") == "paciente":
                         }
                     )
 
-
                 st.dataframe(
                     dados_historico,
                     use_container_width=True,
-                    hide_index=True
+                    hide_index=True,
                 )
-
 
         except Exception as erro:
 
@@ -673,110 +1232,97 @@ if st.session_state.get("area") == "paciente":
 
 elif st.session_state.get("area") == "profissional":
 
-    st.divider()
-
     st.subheader(
         "🩺 Área Profissional"
     )
 
-
-    # =====================================================
+    # -----------------------------------------------------
     # LOGIN PROFISSIONAL
-    # =====================================================
+    # -----------------------------------------------------
 
     if not st.session_state.get(
         "profissional_logado",
-        False
+        False,
     ):
 
         st.write(
-            "Acesso exclusivo para o profissional."
+            "Acesso restrito ao profissional."
         )
 
         senha = st.text_input(
-            "Senha",
+            "Senha profissional",
             type="password",
-            placeholder="Digite a senha profissional"
+            placeholder="Digite sua senha",
         )
 
+        if st.button(
+            "Entrar",
+            type="primary",
+            use_container_width=True,
+        ):
 
-        col_entrar, col_voltar = st.columns(2)
+            try:
 
+                senha_correta = st.secrets[
+                    "senha_profissional"
+                ]
 
-        with col_entrar:
+            except Exception:
 
-            if st.button(
-                "Entrar",
-                type="primary",
-                use_container_width=True
-            ):
+                st.error(
+                    "A senha profissional não foi "
+                    "configurada corretamente."
+                )
 
-                try:
+                st.stop()
 
-                    senha_correta = st.secrets[
-                        "senha_profissional"
-                    ]
+            if senha == senha_correta:
 
-                except Exception:
-
-                    st.error(
-                        "A senha profissional não foi "
-                        "configurada no secrets.toml."
-                    )
-
-                    st.stop()
-
-
-                if senha == senha_correta:
-
-                    st.session_state[
-                        "profissional_logado"
-                    ] = True
-
-                    st.rerun()
-
-                else:
-
-                    st.error(
-                        "Senha incorreta."
-                    )
-
-
-        with col_voltar:
-
-            if st.button(
-                "Voltar",
-                use_container_width=True
-            ):
-
-                st.session_state["area"] = None
+                st.session_state[
+                    "profissional_logado"
+                ] = True
 
                 st.rerun()
 
+            else:
 
-    # =====================================================
+                st.error(
+                    "Senha incorreta."
+                )
+
+        if st.button(
+            "← Voltar",
+        ):
+
+            st.session_state[
+                "area"
+            ] = None
+
+            st.rerun()
+
+
+    # -----------------------------------------------------
     # PROFISSIONAL AUTENTICADO
-    # =====================================================
+    # -----------------------------------------------------
 
     else:
 
-        col_titulo, col_sair = st.columns(
+        col_status, col_sair = st.columns(
             [4, 1]
         )
 
-
-        with col_titulo:
+        with col_status:
 
             st.success(
                 "Acesso profissional autorizado."
             )
 
-
         with col_sair:
 
             if st.button(
                 "Sair",
-                key="sair_profissional"
+                key="sair_profissional",
+                use_container_width=True,
             ):
 
                 st.session_state[
@@ -789,17 +1335,59 @@ elif st.session_state.get("area") == "profissional":
 
                 st.rerun()
 
+        st.divider()
 
-        opcao = st.radio(
-            "Escolha uma opção:",
-            [
-                "Cadastrar paciente",
-                "Consultar pacientes",
-                "Nova pesagem",
-                "Histórico"
-            ]
+        st.write(
+            "### Menu profissional"
         )
 
+        if "menu_profissional" not in st.session_state:
+
+            st.session_state[
+                "menu_profissional"
+            ] = "Nova pesagem"
+
+        if st.button(
+            "⚖️ Nova pesagem",
+            use_container_width=True,
+        ):
+
+            st.session_state[
+                "menu_profissional"
+            ] = "Nova pesagem"
+
+        if st.button(
+            "➕ Cadastrar paciente",
+            use_container_width=True,
+        ):
+
+            st.session_state[
+                "menu_profissional"
+            ] = "Cadastrar paciente"
+
+        if st.button(
+            "🔎 Consultar pacientes",
+            use_container_width=True,
+        ):
+
+            st.session_state[
+                "menu_profissional"
+            ] = "Consultar pacientes"
+
+        if st.button(
+            "📈 Histórico",
+            use_container_width=True,
+        ):
+
+            st.session_state[
+                "menu_profissional"
+            ] = "Histórico"
+
+        opcao = st.session_state[
+            "menu_profissional"
+        ]
+
+        st.divider()
 
         # =================================================
         # CADASTRAR PACIENTE
@@ -811,36 +1399,31 @@ elif st.session_state.get("area") == "profissional":
                 "### ➕ Cadastro de paciente"
             )
 
-
             nome = st.text_input(
                 "Nome completo"
             )
-
 
             sexo = st.selectbox(
                 "Sexo",
                 [
                     "",
                     "Feminino",
-                    "Masculino"
-                ]
+                    "Masculino",
+                ],
             )
-
 
             nascimento = st.date_input(
                 "Data de nascimento",
-                value=None
+                value=None,
             )
-
 
             altura = st.number_input(
                 "Altura (cm)",
                 min_value=0.0,
                 max_value=250.0,
                 step=0.1,
-                format="%.1f"
+                format="%.1f",
             )
-
 
             nivel_atividade = st.selectbox(
                 "Nível de atividade",
@@ -850,26 +1433,23 @@ elif st.session_state.get("area") == "profissional":
                     "Leve",
                     "Moderado",
                     "Ativo",
-                    "Muito ativo"
-                ]
+                    "Muito ativo",
+                ],
             )
-
 
             telefone = st.text_input(
                 "Telefone"
             )
 
-
             email = st.text_input(
                 "E-mail"
             )
 
-
             if st.button(
                 "Cadastrar paciente",
-                type="primary"
+                type="primary",
+                use_container_width=True,
             ):
-
 
                 if not nome.strip():
 
@@ -877,13 +1457,11 @@ elif st.session_state.get("area") == "profissional":
                         "Informe o nome do paciente."
                     )
 
-
                 elif altura <= 0:
 
                     st.warning(
                         "Informe uma altura válida."
                     )
-
 
                 else:
 
@@ -895,9 +1473,7 @@ elif st.session_state.get("area") == "profissional":
                         pacientes
                     )
 
-
                     novo_paciente = {
-
                         "id_paciente":
                             novo_id,
 
@@ -937,9 +1513,8 @@ elif st.session_state.get("area") == "profissional":
                             ),
 
                         "ativo":
-                            "SIM"
+                            "SIM",
                     }
-
 
                     try:
 
@@ -947,35 +1522,25 @@ elif st.session_state.get("area") == "profissional":
                             novo_paciente
                         )
 
-
                         st.success(
                             "Paciente cadastrado "
                             "com sucesso!"
                         )
 
-
                         st.write(
-                            f"Paciente: "
-                            f"**{novo_paciente['nome']}**"
+                            f"**Paciente:** "
+                            f"{novo_paciente['nome']}"
                         )
 
-
                         st.write(
-                            f"ID interno: "
+                            f"**ID interno:** "
                             f"`{novo_id}`"
                         )
 
-
                         st.write(
-                            f"Código de acesso: "
+                            f"**Código de acesso:** "
                             f"`{novo_codigo}`"
                         )
-
-
-                        st.info(
-                            "Cadastro gravado no Google Sheets."
-                        )
-
 
                     except Exception as erro:
 
@@ -996,22 +1561,16 @@ elif st.session_state.get("area") == "profissional":
                 "### 🔎 Consultar pacientes"
             )
 
-
             busca = st.text_input(
                 "Pesquisar pelo nome"
             )
 
-
             if busca:
 
                 encontrados = [
-
                     paciente
-
                     for paciente in pacientes
-
                     if busca.lower()
-
                     in str(
                         paciente.get(
                             "nome",
@@ -1020,11 +1579,9 @@ elif st.session_state.get("area") == "profissional":
                     ).lower()
                 ]
 
-
             else:
 
                 encontrados = pacientes
-
 
             if encontrados:
 
@@ -1033,47 +1590,39 @@ elif st.session_state.get("area") == "profissional":
                     f"**{len(encontrados)}**"
                 )
 
-
                 for paciente in encontrados:
 
                     st.divider()
-
 
                     st.write(
                         f"### "
                         f"{paciente.get('nome', '')}"
                     )
 
+                    st.write(
+                        f"**Código de acesso:** "
+                        f"`{paciente.get('codigo_acesso', '')}`"
+                    )
 
                     st.write(
                         f"**ID:** "
                         f"`{paciente.get('id_paciente', '')}`"
                     )
 
-
-                    st.write(
-                        f"**Código de acesso:** "
-                        f"`{paciente.get('codigo_acesso', '')}`"
-                    )
-
-
                     st.write(
                         f"**Telefone:** "
                         f"{paciente.get('telefone', '-')}"
                     )
-
 
                     st.write(
                         f"**E-mail:** "
                         f"{paciente.get('email', '-')}"
                     )
 
-
                     st.write(
                         f"**Altura:** "
                         f"{paciente.get('altura_cm', '-')} cm"
                     )
-
 
             else:
 
@@ -1092,179 +1641,151 @@ elif st.session_state.get("area") == "profissional":
                 "### ⚖️ Nova pesagem"
             )
 
-
             if not pacientes:
 
                 st.warning(
                     "Nenhum paciente cadastrado."
                 )
 
-
             else:
 
                 opcoes_pacientes = {
-
                     f"{p['nome']} - "
                     f"{p['id_paciente']}": p
-
                     for p in pacientes
                 }
-
 
                 paciente_selecionado = (
                     st.selectbox(
                         "Paciente",
                         list(
                             opcoes_pacientes.keys()
-                        )
+                        ),
                     )
                 )
-
 
                 paciente = opcoes_pacientes[
                     paciente_selecionado
                 ]
 
-
                 data_pesagem = st.date_input(
                     "Data da avaliação",
-                    value=date.today()
+                    value=date.today(),
                 )
-
 
                 st.write(
                     "#### Bioimpedância"
                 )
 
-
                 peso = st.number_input(
                     "Peso (kg)",
                     min_value=0.0,
-                    step=0.1
+                    step=0.1,
                 )
-
 
                 imc = st.number_input(
                     "IMC",
                     min_value=0.0,
-                    step=0.1
+                    step=0.1,
                 )
-
 
                 gordura = st.number_input(
                     "Gordura corporal (%)",
                     min_value=0.0,
-                    step=0.1
+                    step=0.1,
                 )
-
 
                 agua = st.number_input(
                     "Água corporal (%)",
                     min_value=0.0,
-                    step=0.1
+                    step=0.1,
                 )
-
 
                 musculo = st.number_input(
                     "Músculo (%)",
                     min_value=0.0,
-                    step=0.1
+                    step=0.1,
                 )
-
 
                 massa_ossea = st.number_input(
                     "Massa óssea (kg)",
                     min_value=0.0,
-                    step=0.1
+                    step=0.1,
                 )
-
 
                 gordura_visceral = st.number_input(
                     "Gordura visceral",
                     min_value=0.0,
-                    step=0.1
+                    step=0.1,
                 )
-
 
                 gordura_abdominal = st.number_input(
                     "Gordura abdominal",
                     min_value=0.0,
-                    step=0.1
+                    step=0.1,
                 )
-
 
                 bmr = st.number_input(
                     "BMR (kcal)",
                     min_value=0,
-                    step=1
+                    step=1,
                 )
-
 
                 amr = st.number_input(
                     "AMR (kcal)",
                     min_value=0,
-                    step=1
+                    step=1,
                 )
-
 
                 st.write(
                     "#### Medidas corporais"
                 )
 
-
                 cintura = st.number_input(
                     "Cintura (cm)",
                     min_value=0.0,
-                    step=0.1
+                    step=0.1,
                 )
-
 
                 abdomen = st.number_input(
                     "Abdômen (cm)",
                     min_value=0.0,
-                    step=0.1
+                    step=0.1,
                 )
-
 
                 quadril = st.number_input(
                     "Quadril (cm)",
                     min_value=0.0,
-                    step=0.1
+                    step=0.1,
                 )
-
 
                 braco = st.number_input(
                     "Braço (cm)",
                     min_value=0.0,
-                    step=0.1
+                    step=0.1,
                 )
-
 
                 coxa = st.number_input(
                     "Coxa (cm)",
                     min_value=0.0,
-                    step=0.1
+                    step=0.1,
                 )
-
 
                 observacoes = st.text_area(
                     "Observações"
                 )
 
-
                 if st.button(
-                    "Salvar pesagem",
-                    type="primary"
+                    "💾 Salvar pesagem",
+                    type="primary",
+                    use_container_width=True,
                 ):
-
 
                     if peso <= 0:
 
                         st.warning(
-                            "Informe o peso "
-                            "do paciente."
+                            "Informe o peso do paciente."
                         )
-
 
                     else:
 
@@ -1272,9 +1793,7 @@ elif st.session_state.get("area") == "profissional":
 
                             pesagens = listar_pesagens()
 
-
                             nova_pesagem = {
-
                                 "id_pesagem":
                                     gerar_id_pesagem(
                                         pesagens
@@ -1336,32 +1855,27 @@ elif st.session_state.get("area") == "profissional":
                                     coxa,
 
                                 "observacoes":
-                                    observacoes.strip()
+                                    observacoes.strip(),
                             }
-
 
                             adicionar_pesagem(
                                 nova_pesagem
                             )
-
 
                             st.success(
                                 "Pesagem registrada "
                                 "com sucesso!"
                             )
 
-
                             st.write(
-                                f"ID da avaliação: "
+                                f"**ID da avaliação:** "
                                 f"`{nova_pesagem['id_pesagem']}`"
                             )
 
-
                             st.write(
-                                f"Paciente: "
-                                f"**{paciente['nome']}**"
+                                f"**Paciente:** "
+                                f"{paciente['nome']}"
                             )
-
 
                         except Exception as erro:
 
@@ -1382,24 +1896,19 @@ elif st.session_state.get("area") == "profissional":
                 "### 📈 Histórico"
             )
 
-
             if not pacientes:
 
                 st.warning(
                     "Nenhum paciente cadastrado."
                 )
 
-
             else:
 
                 opcoes_pacientes = {
-
                     f"{p['nome']} - "
                     f"{p['id_paciente']}": p
-
                     for p in pacientes
                 }
-
 
                 paciente_selecionado = (
                     st.selectbox(
@@ -1407,15 +1916,13 @@ elif st.session_state.get("area") == "profissional":
                         list(
                             opcoes_pacientes.keys()
                         ),
-                        key="historico_profissional"
+                        key="historico_profissional",
                     )
                 )
-
 
                 paciente = opcoes_pacientes[
                     paciente_selecionado
                 ]
-
 
                 try:
 
@@ -1425,14 +1932,12 @@ elif st.session_state.get("area") == "profissional":
                         )
                     )
 
-
                     if not pesagens:
 
                         st.info(
                             "Esse paciente ainda "
                             "não possui avaliações."
                         )
-
 
                     else:
 
@@ -1441,12 +1946,10 @@ elif st.session_state.get("area") == "profissional":
                             key=lambda x: converter_data(
                                 x.get("data", "")
                             ),
-                            reverse=True
+                            reverse=True,
                         )
 
-
                         dados = []
-
 
                         for pesagem in pesagens:
 
@@ -1455,7 +1958,7 @@ elif st.session_state.get("area") == "profissional":
                                     "Data":
                                         pesagem["data"],
 
-                                    "Peso":
+                                    "Peso (kg)":
                                         pesagem["peso_kg"],
 
                                     "IMC":
@@ -1471,20 +1974,18 @@ elif st.session_state.get("area") == "profissional":
                                             "musculo_pct"
                                         ],
 
-                                    "Cintura":
+                                    "Cintura (cm)":
                                         pesagem[
                                             "cintura_cm"
                                         ],
                                 }
                             )
 
-
                         st.dataframe(
                             dados,
                             use_container_width=True,
-                            hide_index=True
+                            hide_index=True,
                         )
-
 
                 except Exception as erro:
 
