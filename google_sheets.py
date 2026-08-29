@@ -226,3 +226,60 @@ def listar_pesagens_por_paciente(id_paciente):
         ).strip()
         == str(id_paciente).strip()
     ]
+
+def editar_pesagem(id_pesagem, pesagem_atualizada):
+    aba = obter_aba_pesagens()
+
+    valores = aba.get("A:S")
+
+    for numero_linha, linha in enumerate(valores[1:], start=2):
+
+        if linha and str(linha[0]).strip() == str(id_pesagem).strip():
+
+            nova_linha = [
+                pesagem_atualizada["id_pesagem"],
+                pesagem_atualizada["id_paciente"],
+                pesagem_atualizada["data"],
+                pesagem_atualizada["peso_kg"],
+                pesagem_atualizada["imc"],
+                pesagem_atualizada["gordura_pct"],
+                pesagem_atualizada["agua_pct"],
+                pesagem_atualizada["musculo_pct"],
+                pesagem_atualizada["massa_ossea_kg"],
+                pesagem_atualizada["gordura_visceral"],
+                pesagem_atualizada["gordura_abdominal"],
+                pesagem_atualizada["bmr_kcal"],
+                pesagem_atualizada["amr_kcal"],
+                pesagem_atualizada["cintura_cm"],
+                pesagem_atualizada["abdomen_cm"],
+                pesagem_atualizada["quadril_cm"],
+                pesagem_atualizada["braco_cm"],
+                pesagem_atualizada["coxa_cm"],
+                pesagem_atualizada["observacoes"],
+            ]
+
+            aba.update(
+                range_name=f"A{numero_linha}:S{numero_linha}",
+                values=[nova_linha],
+                value_input_option="USER_ENTERED"
+            )
+
+            return True
+
+    return False
+
+
+def excluir_pesagem(id_pesagem):
+    aba = obter_aba_pesagens()
+
+    valores = aba.get("A:S")
+
+    for numero_linha, linha in enumerate(valores[1:], start=2):
+
+        if linha and str(linha[0]).strip() == str(id_pesagem).strip():
+
+            aba.delete_rows(numero_linha)
+
+            return True
+
+    return False
