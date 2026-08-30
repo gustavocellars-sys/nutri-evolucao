@@ -401,7 +401,7 @@ def calcular_fase_do_ciclo(
             "Fase menstrual"
         )
 
-        icone = "🌑"
+        imagem = "ancia.png"
 
         descricao = (
             "Um período de maior recolhimento, "
@@ -424,7 +424,7 @@ def calcular_fase_do_ciclo(
             "Fase folicular"
         )
 
-        icone = "🌱"
+        imagem = "jovem.png"
 
         descricao = (
             "Um período associado à renovação, "
@@ -448,7 +448,7 @@ def calcular_fase_do_ciclo(
             "Fase ovulatória"
         )
 
-        icone = "🌸"
+        imagem = "mae.png"
 
         descricao = (
             "Um período associado à conexão, "
@@ -468,7 +468,7 @@ def calcular_fase_do_ciclo(
             "Fase lútea"
         )
 
-        icone = "🌙"
+        imagem = "feiticeira.png"
 
         descricao = (
             "Um período associado à introspecção, "
@@ -500,8 +500,8 @@ def calcular_fase_do_ciclo(
         "fase_biologica":
             fase_biologica,
 
-        "icone":
-            icone,
+        "imagem":
+            imagem,
 
         "descricao":
             descricao,
@@ -1123,6 +1123,20 @@ elif st.session_state.get("area") == "paciente":
 
                 if resultado_ciclo:
 
+                    imagem_fase = resultado_ciclo["imagem"]
+
+                    if os.path.exists(imagem_fase):
+
+                        col_img1, col_img2, col_img3 = st.columns(
+                            [1.3, 1, 1.3]
+                        )
+
+                        with col_img2:
+                            st.image(
+                                imagem_fase,
+                                use_container_width=True
+                            )
+
                     st.markdown(
                         f"""
                     <div style="
@@ -1132,13 +1146,6 @@ elif st.session_state.get("area") == "paciente":
                         background-color:#F4F7F5;
                         margin-bottom:15px;
                     ">
-
-                    <div style="
-                        font-size:52px;
-                        margin-bottom:5px;
-                    ">
-                    {resultado_ciclo['icone']}
-                    </div>
 
                     <div style="
                         font-size:15px;
