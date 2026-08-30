@@ -32,6 +32,7 @@ from google_sheets import (
     listar_pesagens_por_paciente,
     editar_pesagem,
     excluir_pesagem,
+    atualizar_ciclo_paciente,
 )
 
 
@@ -277,6 +278,256 @@ def formatar_numero(numero, casas=1):
 
     return f"{numero:.{casas}f}".replace(".", ",")
 
+# =========================================================
+# CICLO MENSTRUAL
+# =========================================================
+
+def calcular_fase_do_ciclo(
+    ultima_menstruacao,
+    ciclo_medio_dias,
+    data_atual=None
+):
+
+    if data_atual is None:
+        data_atual = date.today()
+
+    if isinstance(
+        ultima_menstruacao,
+        str
+    ):
+
+        try:
+
+            ultima_menstruacao = (
+                datetime.strptime(
+                    ultima_menstruacao,
+                    "%d/%m/%Y"
+                ).date()
+            )
+
+        except ValueError:
+            return None
+
+
+    try:
+
+        ciclo = int(
+            ciclo_medio_dias
+        )
+
+    except (
+        ValueError,
+        TypeError
+    ):
+
+        return None
+
+
+    if ciclo < 14 or ciclo > 50:
+        return None
+
+
+    # Não calcula para datas futuras
+    if ultima_menstruacao > data_atual:
+        return None
+
+
+    # Quantos dias se passaram
+    dias_passados = (
+        data_atual
+        - ultima_menstruacao
+    ).days
+
+
+    # Dia atual do ciclo.
+    # O primeiro dia da menstruação é Dia 1.
+    dia_do_ciclo = (
+        dias_passados % ciclo
+    ) + 1
+
+
+    # Ovulação estimada:
+    # aproximadamente 14 dias antes
+    # da próxima menstruação.
+    ovulacao_estimada = max(
+        1,
+        ciclo - 14
+    )
+
+
+    # ---------------------------------------------
+    # LIMITES DAS FASES
+    # ---------------------------------------------
+
+    fim_menstrual = min(
+        5,
+        ciclo
+    )
+
+
+    # Janela ovulatória:
+    # aproximadamente 2 dias antes
+    # até 1 dia depois da ovulação.
+    #
+    # Evitamos sobreposição com
+    # os cinco primeiros dias menstruais.
+    inicio_ovulatoria = max(
+        fim_menstrual + 1,
+        ovulacao_estimada - 2
+    )
+
+    fim_ovulatoria = min(
+        ciclo,
+        max(
+            inicio_ovulatoria,
+            ovulacao_estimada + 1
+        )
+    )
+
+
+    # ---------------------------------------------
+    # CLASSIFICAÇÃO
+    # ---------------------------------------------
+
+    if dia_do_ciclo <= fim_menstrual:
+
+        numero_fase = 1
+
+        nome_fase = (
+            "A Sábia Anciã"
+        )
+
+        fase_biologica = (
+            "Fase menstrual"
+        )
+
+        icone = "🌑"
+
+        descricao = (
+            "Um período de maior recolhimento, "
+            "percepção interna e renovação."
+        )
+
+
+    elif (
+        dia_do_ciclo
+        < inicio_ovulatoria
+    ):
+
+        numero_fase = 2
+
+        nome_fase = (
+            "A Jovem Exploradora"
+        )
+
+        fase_biologica = (
+            "Fase folicular"
+        )
+
+        icone = "🌱"
+
+        descricao = (
+            "Um período associado à renovação, "
+            "curiosidade, crescimento e movimento."
+        )
+
+
+    elif (
+        inicio_ovulatoria
+        <= dia_do_ciclo
+        <= fim_ovulatoria
+    ):
+
+        numero_fase = 3
+
+        nome_fase = (
+            "A Mãe Amorosa"
+        )
+
+        fase_biologica = (
+            "Fase ovulatória"
+        )
+
+        icone = "🌸"
+
+        descricao = (
+            "Um período associado à conexão, "
+            "acolhimento, comunicação e expansão."
+        )
+
+
+    else:
+
+        numero_fase = 4
+
+        nome_fase = (
+            "A Feiticeira"
+        )
+
+        fase_biologica = (
+            "Fase lútea"
+        )
+
+        icone = "🌙"
+
+        descricao = (
+            "Um período associado à introspecção, "
+            "intuição, transformação e preparação "
+            "para um novo ciclo."
+        )
+
+
+    # Quantos dias até o próximo
+    # Dia 1 estimado
+    dias_para_proxima = (
+        ciclo
+        - dia_do_ciclo
+        + 1
+    )
+
+
+    return {
+
+        "dia_do_ciclo":
+            dia_do_ciclo,
+
+        "numero_fase":
+            numero_fase,
+
+        "nome_fase":
+            nome_fase,
+
+        "fase_biologica":
+            fase_biologica,
+
+        "icone":
+            icone,
+
+        "descricao":
+            descricao,
+
+        "dias_para_proxima_menstruacao":
+            dias_para_proxima,
+
+        "ovulacao_estimada":
+            ovulacao_estimada,
+
+        "inicio_ovulatoria":
+            inicio_ovulatoria,
+
+        "fim_ovulatoria":
+            fim_ovulatoria,
+    }
+def paciente_e_feminina(paciente):
+
+    sexo = str(
+        paciente.get(
+            "sexo",
+            ""
+        )
+    ).strip().lower()
+
+    return sexo == "feminino"
 
 # =========================================================
 # PDF
@@ -824,7 +1075,314 @@ elif st.session_state.get("area") == "paciente":
                 ] = None
 
                 st.rerun()
+        # =====================================================
+        # CICLO MENSTRUAL
+        # =====================================================
 
+        if paciente_e_feminina(
+            paciente
+        ):
+
+            ultima_menstruacao_salva = str(
+                paciente.get(
+                    "ultima_menstruacao",
+                    ""
+                )
+            ).strip()
+
+            ciclo_salvo = str(
+                paciente.get(
+                    "ciclo_medio_dias",
+                    ""
+                )
+            ).strip()
+
+
+            possui_dados_ciclo = (
+                ultima_menstruacao_salva != ""
+                and ciclo_salvo != ""
+            )
+
+
+            st.divider()
+
+
+            # -------------------------------------------------
+            # CICLO JÁ CONFIGURADO
+            # -------------------------------------------------
+
+            if possui_dados_ciclo:
+
+                resultado_ciclo = (
+                    calcular_fase_do_ciclo(
+                        ultima_menstruacao_salva,
+                        ciclo_salvo
+                    )
+                )
+
+
+                if resultado_ciclo:
+
+                    st.markdown(
+                        f"""
+                    <div style="
+                        text-align:center;
+                        padding:24px;
+                        border-radius:16px;
+                        background-color:#F4F7F5;
+                        margin-bottom:15px;
+                    ">
+
+                    <div style="
+                        font-size:52px;
+                        margin-bottom:5px;
+                    ">
+                    {resultado_ciclo['icone']}
+                    </div>
+
+                    <div style="
+                        font-size:15px;
+                        color:#666;
+                    ">
+                    Hoje você está no
+                    </div>
+
+                    <div style="
+                        font-size:22px;
+                        font-weight:700;
+                        margin-top:4px;
+                    ">
+                    Dia {resultado_ciclo['dia_do_ciclo']} do seu ciclo
+                    </div>
+
+                    <div style="
+                        font-size:25px;
+                        font-weight:700;
+                        margin-top:18px;
+                    ">
+                    Fase {resultado_ciclo['numero_fase']} — {resultado_ciclo['nome_fase']}
+                    </div>
+
+                    <div style="
+                        font-size:16px;
+                        margin-top:5px;
+                        color:#666;
+                    ">
+                    {resultado_ciclo['fase_biologica']}
+                    </div>
+
+                    <div style="
+                        font-size:15px;
+                        margin-top:16px;
+                    ">
+                    {resultado_ciclo['descricao']}
+                    </div>
+
+                    <div style="
+                        margin-top:20px;
+                        font-weight:600;
+                    ">
+                    Próxima menstruação estimada em
+                    {resultado_ciclo['dias_para_proxima_menstruacao']} dia(s)
+                    </div>
+
+                    </div>
+                    """,
+                        unsafe_allow_html=True
+                    )
+
+
+                    st.caption(
+                        "As fases e datas apresentadas são "
+                        "estimativas baseadas na duração média "
+                        "informada do ciclo. Não devem ser usadas "
+                        "para determinar ovulação, fertilidade "
+                        "ou como método contraceptivo."
+                    )
+
+
+                if st.button(
+                    "⚙️ Atualizar meu ciclo",
+                    use_container_width=True,
+                    key="botao_atualizar_ciclo"
+                ):
+
+                    st.session_state[
+                        "editando_ciclo"
+                    ] = True
+
+
+            # -------------------------------------------------
+            # AINDA NÃO CONFIGURADO
+            # -------------------------------------------------
+
+            else:
+
+                st.info(
+                    "🌙 Você pode acompanhar as fases "
+                    "do seu ciclo menstrual neste portal."
+                )
+
+                if st.button(
+                    "🌙 Configurar meu ciclo",
+                    use_container_width=True,
+                    key="botao_configurar_ciclo"
+                ):
+
+                    st.session_state[
+                        "editando_ciclo"
+                    ] = True
+
+
+            # -------------------------------------------------
+            # FORMULÁRIO PARA CONFIGURAR / ATUALIZAR
+            # -------------------------------------------------
+
+            if st.session_state.get(
+                "editando_ciclo",
+                False
+            ):
+
+                st.write(
+                    "### 🌙 Atualizar meu ciclo"
+                )
+
+
+                # Tenta recuperar a última data salva
+                try:
+
+                    data_padrao_ciclo = (
+                        datetime.strptime(
+                            ultima_menstruacao_salva,
+                            "%d/%m/%Y"
+                        ).date()
+                    )
+
+                except ValueError:
+
+                    data_padrao_ciclo = (
+                        date.today()
+                    )
+
+
+                # Tenta recuperar a duração salva
+                try:
+
+                    ciclo_padrao = int(
+                        ciclo_salvo
+                    )
+
+                    if (
+                        ciclo_padrao < 14
+                        or ciclo_padrao > 50
+                    ):
+                        ciclo_padrao = 28
+
+                except (
+                    ValueError,
+                    TypeError
+                ):
+
+                    ciclo_padrao = 28
+
+
+                nova_ultima_menstruacao = (
+                    st.date_input(
+                        "Data da última menstruação",
+                        value=data_padrao_ciclo,
+                        min_value=date(
+                            1900,
+                            1,
+                            1
+                        ),
+                        max_value=date.today(),
+                        format="DD/MM/YYYY",
+                        key="nova_ultima_menstruacao"
+                    )
+                )
+
+
+                novo_ciclo_medio = (
+                    st.number_input(
+                        "Duração média do ciclo (dias)",
+                        min_value=14,
+                        max_value=50,
+                        value=ciclo_padrao,
+                        step=1,
+                        key="novo_ciclo_medio"
+                    )
+                )
+
+
+                st.caption(
+                    "Informe quantos dias, em média, "
+                    "há entre o primeiro dia de uma "
+                    "menstruação e o primeiro dia da próxima."
+                )
+
+
+                col_salvar, col_cancelar = (
+                    st.columns(2)
+                )
+
+
+                with col_salvar:
+
+                    if st.button(
+                        "💾 Salvar ciclo",
+                        type="primary",
+                        use_container_width=True,
+                        key="salvar_ciclo"
+                    ):
+
+                        sucesso = (
+                            atualizar_ciclo_paciente(
+                                paciente[
+                                    "id_paciente"
+                                ],
+                                nova_ultima_menstruacao.strftime(
+                                    "%d/%m/%Y"
+                                ),
+                                int(
+                                    novo_ciclo_medio
+                                )
+                            )
+                        )
+
+
+                        if sucesso:
+
+                            st.session_state[
+                                "editando_ciclo"
+                            ] = False
+
+                            st.success(
+                                "Dados do ciclo atualizados."
+                            )
+
+                            st.rerun()
+
+                        else:
+
+                            st.error(
+                                "Não foi possível atualizar "
+                                "os dados do ciclo."
+                            )
+
+
+                with col_cancelar:
+
+                    if st.button(
+                        "Cancelar",
+                        use_container_width=True,
+                        key="cancelar_ciclo"
+                    ):
+
+                        st.session_state[
+                            "editando_ciclo"
+                        ] = False
+
+                        st.rerun()
         try:
 
             pesagens_paciente = (
@@ -1237,11 +1795,7 @@ elif st.session_state.get("area") == "profissional":
             nascimento = st.date_input(
                 "Data de nascimento",
                 value=None,
-                min_value=date(
-                    1900,
-                    1,
-                    1
-                ),
+                min_value=date(1900,1,1),
                 max_value=date.today(),
                 format="DD/MM/YYYY"
             )
@@ -1273,6 +1827,61 @@ elif st.session_state.get("area") == "profissional":
                 "E-mail"
             )
 
+        # =====================================================
+        # DADOS DO CICLO MENSTRUAL
+        # =====================================================
+
+            ultima_menstruacao = None
+            ciclo_medio_dias = None
+
+
+            if sexo == "Feminino":
+
+                st.divider()
+
+                st.write(
+                    "#### 🌙 Ciclo menstrual"
+                )
+
+                st.caption(
+                    "Preenchimento opcional. "
+                    "A paciente também poderá configurar "
+                    "esses dados posteriormente."
+                )
+
+                informar_ciclo = st.checkbox(
+                    "Cadastrar dados do ciclo agora"
+                )
+
+                if informar_ciclo:
+
+                    ultima_menstruacao = (
+                        st.date_input(
+                            "Data da última menstruação",
+                            value=date.today(),
+                            min_value=date(
+                                1900,
+                                1,
+                                1
+                            ),
+                            max_value=date.today(),
+                            format="DD/MM/YYYY"
+                        )
+                    )
+
+                    ciclo_medio_dias = (
+                        st.number_input(
+                            "Duração média do ciclo (dias)",
+                            min_value=14,
+                            max_value=50,
+                            value=28,
+                            step=1
+                        )
+                    )
+            # =====================================================
+            # BOTÃO DE CADASTRO
+            # =====================================================
+
             if st.button(
                 "Cadastrar paciente",
                 type="primary",
@@ -1284,6 +1893,7 @@ elif st.session_state.get("area") == "profissional":
                     st.warning(
                         "Informe o nome do paciente."
                     )
+
 
                 elif nascimento is None:
 
@@ -1333,8 +1943,23 @@ elif st.session_state.get("area") == "profissional":
                                 date.today().strftime(
                                     "%d/%m/%Y"
                                 ),
-                            "ativo": "SIM"
+                            "ativo": "SIM", 
+
+                            "ultima_menstruacao": (
+                                ultima_menstruacao.strftime(
+                                    "%d/%m/%Y"
+                                )
+                                if ultima_menstruacao
+                                else ""
+                            ),
+
+                            "ciclo_medio_dias": (
+                                int(ciclo_medio_dias)
+                                if ciclo_medio_dias
+                                else ""
+                            ),
                         }
+                        
 
                         adicionar_paciente(
                             novo_paciente

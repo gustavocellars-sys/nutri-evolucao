@@ -19,6 +19,8 @@ COLUNAS_PACIENTES = [
     "email",
     "data_cadastro",
     "ativo",
+    "ultima_menstruacao",
+    "ciclo_medio_dias",
 ]
 
 COLUNAS_PESAGENS = [
@@ -106,7 +108,7 @@ def obter_aba_pesagens():
 def listar_pacientes():
     aba = obter_aba_pacientes()
 
-    valores = aba.get("A:K")
+    valores = aba.get("A:M")
 
     if len(valores) <= 1:
         return []
@@ -147,6 +149,8 @@ def adicionar_paciente(paciente):
         paciente["email"],
         paciente["data_cadastro"],
         paciente["ativo"],
+        paciente.get("ultima_menstruacao", ""),
+        paciente.get("ciclo_medio_dias", ""),
     ]
 
     aba.append_row(
@@ -279,6 +283,46 @@ def excluir_pesagem(id_pesagem):
         if linha and str(linha[0]).strip() == str(id_pesagem).strip():
 
             aba.delete_rows(numero_linha)
+
+            return True
+
+    return False
+
+def atualizar_ciclo_paciente(
+    id_paciente,
+    ultima_menstruacao,
+    ciclo_medio_dias
+):
+    aba = obter_aba_pacientes()
+
+    valores = aba.get("A:M")
+
+    for numero_linha, linha in enumerate(
+        valores[1:],
+        start=2
+    ):
+
+        if not linha:
+            continue
+
+        id_encontrado = str(
+            linha[0]
+        ).strip()
+
+        if id_encontrado == str(
+            id_paciente
+        ).strip():
+
+            aba.update(
+                range_name=f"L{numero_linha}:M{numero_linha}",
+                values=[
+                    [
+                        ultima_menstruacao,
+                        ciclo_medio_dias
+                    ]
+                ],
+                value_input_option="USER_ENTERED"
+            )
 
             return True
 
