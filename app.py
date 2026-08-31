@@ -278,6 +278,270 @@ def formatar_numero(numero, casas=1):
 
     return f"{numero:.{casas}f}".replace(".", ",")
 
+
+# =========================================================
+# FAIXAS DE REFERÊNCIA DOS GRÁFICOS
+# =========================================================
+
+def calcular_idade(nascimento):
+    """
+    Calcula a idade atual a partir do campo nascimento.
+
+    Aceita os formatos mais comuns que podem chegar do
+    Google Sheets/Streamlit:
+    DD/MM/AAAA, AAAA-MM-DD, DD-MM-AAAA e AAAA/MM/DD.
+    """
+
+    if nascimento is None:
+        return None
+
+    if isinstance(nascimento, datetime):
+        data_nascimento = nascimento.date()
+
+    elif isinstance(nascimento, date):
+        data_nascimento = nascimento
+
+    else:
+        texto = str(nascimento).strip()
+
+        if not texto:
+            return None
+
+        # Remove horário caso o Google Sheets retorne algo
+        # como "1985-04-07 00:00:00".
+        texto_sem_hora = texto.split(" ")[0]
+
+        formatos = [
+            "%d/%m/%Y",
+            "%Y-%m-%d",
+            "%d-%m-%Y",
+            "%Y/%m/%d",
+        ]
+
+        data_nascimento = None
+
+        for formato in formatos:
+            try:
+                data_nascimento = datetime.strptime(
+                    texto_sem_hora,
+                    formato
+                ).date()
+                break
+            except ValueError:
+                continue
+
+        if data_nascimento is None:
+            return None
+
+    hoje = date.today()
+
+    if data_nascimento > hoje:
+        return None
+
+    return (
+        hoje.year
+        - data_nascimento.year
+        - (
+            (hoje.month, hoje.day)
+            < (data_nascimento.month, data_nascimento.day)
+        )
+    )
+
+
+def obter_faixas_referencia(paciente):
+    """
+    Retorna as faixas de referência usadas nos gráficos.
+
+    IMC:
+        Adultos (>= 18 anos): 18,5 a 24,9 kg/m².
+
+    Gordura visceral:
+        BF1000: 1 a 12.
+
+    Água corporal:
+        BF1000:
+        - Masculino: 50 a 65 %
+        - Feminino: 45 a 60 %
+
+    Gordura corporal e músculo:
+        Faixa 'Normal' da BF1000 conforme sexo e idade.
+    """
+
+    idade = calcular_idade(
+        paciente.get("nascimento", "")
+    )
+
+    sexo = str(
+        paciente.get("sexo", "")
+    ).strip().lower()
+
+    referencias = {
+        "imc": None,
+        "gordura_visceral": (1, 12),
+        "agua": None,
+        "gordura": None,
+        "musculo": None,
+    }
+
+    # IMC: faixa de referência para adultos.
+    if idade is not None and idade >= 18:
+        referencias["imc"] = (18.5, 24.9)
+
+    # Água corporal BF1000.
+    if sexo == "masculino":
+        referencias["agua"] = (50, 65)
+    elif sexo == "feminino":
+        referencias["agua"] = (45, 60)
+
+    # Gordura corporal BF1000 — faixa "Normal".
+    gordura_masculino = [
+        (10, 14, 11, 16),
+        (15, 19, 12, 17),
+        (20, 29, 13, 18),
+        (30, 39, 14, 19),
+        (40, 49, 15, 20),
+        (50, 59, 16, 21),
+        (60, 69, 17, 22),
+        (70, 100, 18, 23),
+    ]
+
+    gordura_feminino = [
+        (10, 14, 16, 21),
+        (15, 19, 17, 22),
+        (20, 29, 18, 23),
+        (30, 39, 19, 24),
+        (40, 49, 20, 25),
+        (50, 59, 21, 26),
+        (60, 69, 22, 27),
+        (70, 100, 23, 28),
+    ]
+
+    # Percentual muscular BF1000 — faixa "Normal".
+    musculo_masculino = [
+        (10, 14, 44, 57),
+        (15, 19, 43, 56),
+        (20, 29, 42, 54),
+        (30, 39, 41, 52),
+        (40, 49, 40, 50),
+        (50, 59, 39, 48),
+        (60, 69, 38, 47),
+        (70, 100, 37, 46),
+    ]
+
+    musculo_feminino = [
+        (10, 14, 36, 43),
+        (15, 19, 35, 41),
+        (20, 29, 34, 39),
+        (30, 39, 33, 38),
+        (40, 49, 31, 36),
+        (50, 59, 29, 34),
+        (60, 69, 28, 33),
+        (70, 100, 27, 32),
+    ]
+
+    if idade is None:
+        return referencias
+
+    if sexo == "masculino":
+        tabela_gordura = gordura_masculino
+        tabela_musculo = musculo_masculino
+    elif sexo == "feminino":
+        tabela_gordura = gordura_feminino
+        tabela_musculo = musculo_feminino
+    else:
+        return referencias
+
+    for idade_min, idade_max, minimo, maximo in tabela_gordura:
+        if idade_min <= idade <= idade_max:
+            referencias["gordura"] = (minimo, maximo)
+            break
+
+    for idade_min, idade_max, minimo, maximo in tabela_musculo:
+        if idade_min <= idade <= idade_max:
+            referencias["musculo"] = (minimo, maximo)
+            break
+
+    return referencias
+
+
+def adicionar_faixa_referencia(figura, limite_minimo, limite_maximo):
+    """
+    Adiciona uma área horizontal discreta ao gráfico Plotly,
+    identificada como 'Faixa de referência', e garante que
+    tanto a faixa quanto os dados do paciente fiquem visíveis.
+    """
+
+    if limite_minimo is None or limite_maximo is None:
+        return figura
+
+    figura.add_hrect(
+        y0=limite_minimo,
+        y1=limite_maximo,
+        fillcolor="#8FBFA8",
+        opacity=0.16,
+        line_width=0,
+        annotation_text="Faixa de referência",
+        annotation_position="top left"
+    )
+
+    figura.add_hline(
+        y=limite_minimo,
+        line_dash="dot",
+        line_width=1,
+        line_color="#6F8F7C"
+    )
+
+    figura.add_hline(
+        y=limite_maximo,
+        line_dash="dot",
+        line_width=1,
+        line_color="#6F8F7C"
+    )
+
+    # Garante que a escala automática não esconda a faixa
+    # quando os resultados do paciente estiverem distantes dela.
+    valores = [
+        float(limite_minimo),
+        float(limite_maximo),
+    ]
+
+    for trace in figura.data:
+        valores_trace = getattr(trace, "y", None)
+
+        if valores_trace is None:
+            continue
+
+        for valor in valores_trace:
+            try:
+                numero = float(valor)
+
+                # Ignora NaN/inf.
+                if numero == numero and abs(numero) != float("inf"):
+                    valores.append(numero)
+
+            except (ValueError, TypeError):
+                continue
+
+    if valores:
+        menor = min(valores)
+        maior = max(valores)
+
+        amplitude = maior - menor
+
+        if amplitude <= 0:
+            amplitude = max(abs(maior), 1.0)
+
+        margem = max(amplitude * 0.12, 0.5)
+
+        figura.update_yaxes(
+            range=[
+                menor - margem,
+                maior + margem
+            ]
+        )
+
+    return figura
+
 # =========================================================
 # CICLO MENSTRUAL
 # =========================================================
@@ -1513,6 +1777,19 @@ elif st.session_state.get("area") == "paciente":
                         delta_color="off"
                     )
 
+                # =====================================================
+                # REFERÊNCIAS DO PACIENTE
+                # =====================================================
+
+                referencias = obter_faixas_referencia(
+                    paciente
+                )
+
+
+                # =====================================================
+                # PREPARAR DADOS DOS GRÁFICOS
+                # =====================================================
+
                 dados_grafico = []
 
                 for pesagem in pesagens_paciente:
@@ -1525,11 +1802,20 @@ elif st.session_state.get("area") == "paciente":
                             "Peso": converter_numero(
                                 pesagem["peso_kg"]
                             ),
+                            "IMC": converter_numero(
+                                pesagem["imc"]
+                            ),
                             "Gordura": converter_numero(
                                 pesagem["gordura_pct"]
                             ),
+                            "Água": converter_numero(
+                                pesagem["agua_pct"]
+                            ),
                             "Músculo": converter_numero(
                                 pesagem["musculo_pct"]
+                            ),
+                            "Gordura visceral": converter_numero(
+                                pesagem["gordura_visceral"]
                             ),
                         }
                     )
@@ -1538,49 +1824,231 @@ elif st.session_state.get("area") == "paciente":
                     dados_grafico
                 )
 
+
+                # =====================================================
+                # EVOLUÇÃO DO PESO
+                # =====================================================
+
                 st.divider()
 
                 st.write(
-                    "## 📉 Evolução do peso"
+                    "## ⚖️ Evolução do peso"
+                )
+
+                fig_peso = px.line(
+                    df,
+                    x="Data",
+                    y="Peso",
+                    markers=True,
+                    labels={
+                        "Data": "Data",
+                        "Peso": "Peso (kg)"
+                    }
+                )
+
+                fig_peso.update_layout(
+                    xaxis_title="",
+                    yaxis_title="Peso (kg)"
                 )
 
                 st.plotly_chart(
-                    px.line(
-                        df,
-                        x="Data",
-                        y="Peso",
-                        markers=True
-                    ),
+                    fig_peso,
                     use_container_width=True
                 )
+
+
+                # =====================================================
+                # EVOLUÇÃO DO IMC
+                # =====================================================
+
+                st.write(
+                    "## 📐 Evolução do IMC"
+                )
+
+                fig_imc = px.line(
+                    df,
+                    x="Data",
+                    y="IMC",
+                    markers=True,
+                    labels={
+                        "Data": "Data",
+                        "IMC": "IMC"
+                    }
+                )
+
+                fig_imc.update_layout(
+                    xaxis_title="",
+                    yaxis_title="IMC"
+                )
+
+                if referencias["imc"]:
+
+                    fig_imc = adicionar_faixa_referencia(
+                        fig_imc,
+                        referencias["imc"][0],
+                        referencias["imc"][1]
+                    )
+
+                st.plotly_chart(
+                    fig_imc,
+                    use_container_width=True
+                )
+
+
+                # =====================================================
+                # EVOLUÇÃO DA GORDURA CORPORAL
+                # =====================================================
 
                 st.write(
                     "## 🔥 Evolução da gordura corporal"
                 )
 
+                fig_gordura = px.line(
+                    df,
+                    x="Data",
+                    y="Gordura",
+                    markers=True,
+                    labels={
+                        "Data": "Data",
+                        "Gordura": "Gordura corporal (%)"
+                    }
+                )
+
+                fig_gordura.update_layout(
+                    xaxis_title="",
+                    yaxis_title="Gordura corporal (%)"
+                )
+
+                if referencias["gordura"]:
+
+                    fig_gordura = adicionar_faixa_referencia(
+                        fig_gordura,
+                        referencias["gordura"][0],
+                        referencias["gordura"][1]
+                    )
+
                 st.plotly_chart(
-                    px.line(
-                        df,
-                        x="Data",
-                        y="Gordura",
-                        markers=True
-                    ),
+                    fig_gordura,
                     use_container_width=True
                 )
+
+
+                # =====================================================
+                # EVOLUÇÃO DA ÁGUA CORPORAL
+                # =====================================================
+
+                st.write(
+                    "## 💧 Evolução da água corporal"
+                )
+
+                fig_agua = px.line(
+                    df,
+                    x="Data",
+                    y="Água",
+                    markers=True,
+                    labels={
+                        "Data": "Data",
+                        "Água": "Água corporal (%)"
+                    }
+                )
+
+                fig_agua.update_layout(
+                    xaxis_title="",
+                    yaxis_title="Água corporal (%)"
+                )
+
+                if referencias["agua"]:
+
+                    # A BF1000 classifica valores acima desta faixa
+                    # como "muito bons"; por isso não adicionamos
+                    # uma zona de alerta acima da faixa sombreada.
+                    fig_agua = adicionar_faixa_referencia(
+                        fig_agua,
+                        referencias["agua"][0],
+                        referencias["agua"][1]
+                    )
+
+                st.plotly_chart(
+                    fig_agua,
+                    use_container_width=True
+                )
+
+
+                # =====================================================
+                # EVOLUÇÃO MUSCULAR
+                # =====================================================
 
                 st.write(
                     "## 💪 Evolução muscular"
                 )
 
+                fig_musculo = px.line(
+                    df,
+                    x="Data",
+                    y="Músculo",
+                    markers=True,
+                    labels={
+                        "Data": "Data",
+                        "Músculo": "Músculo (%)"
+                    }
+                )
+
+                fig_musculo.update_layout(
+                    xaxis_title="",
+                    yaxis_title="Músculo (%)"
+                )
+
+                if referencias["musculo"]:
+
+                    fig_musculo = adicionar_faixa_referencia(
+                        fig_musculo,
+                        referencias["musculo"][0],
+                        referencias["musculo"][1]
+                    )
+
                 st.plotly_chart(
-                    px.line(
-                        df,
-                        x="Data",
-                        y="Músculo",
-                        markers=True
-                    ),
+                    fig_musculo,
                     use_container_width=True
                 )
+
+
+                # =====================================================
+                # EVOLUÇÃO DA GORDURA VISCERAL
+                # =====================================================
+
+                st.write(
+                    "## 🫀 Evolução da gordura visceral"
+                )
+
+                fig_visceral = px.line(
+                    df,
+                    x="Data",
+                    y="Gordura visceral",
+                    markers=True,
+                    labels={
+                        "Data": "Data",
+                        "Gordura visceral": "Gordura visceral"
+                    }
+                )
+
+                fig_visceral.update_layout(
+                    xaxis_title="",
+                    yaxis_title="Gordura visceral"
+                )
+
+                if referencias["gordura_visceral"]:
+
+                    fig_visceral = adicionar_faixa_referencia(
+                        fig_visceral,
+                        referencias["gordura_visceral"][0],
+                        referencias["gordura_visceral"][1]
+                    )
+
+                st.plotly_chart(
+                    fig_visceral,
+                    use_container_width=True
+                )
+
 
                 st.divider()
 
