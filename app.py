@@ -464,6 +464,19 @@ def obter_faixas_referencia(paciente):
     return referencias
 
 
+def formatar_eixo_data(figura):
+    """
+    Exibe somente a data nos gráficos, sem hora/minuto/segundo.
+    """
+
+    figura.update_xaxes(
+        tickformat="%d/%m/%Y",
+        hoverformat="%d/%m/%Y"
+    )
+
+    return figura
+
+
 def adicionar_faixa_referencia(figura, limite_minimo, limite_maximo):
     """
     Adiciona uma área horizontal discreta ao gráfico Plotly,
@@ -1340,7 +1353,7 @@ elif st.session_state.get("area") == "paciente":
 
                 st.rerun()
         # =====================================================
-        # CICLO MENSTRUAL
+        # CICLO MENSTRUAL / MENOPAUSA
         # =====================================================
 
         if paciente_e_feminina(
@@ -1361,29 +1374,92 @@ elif st.session_state.get("area") == "paciente":
                 )
             ).strip()
 
+            menopausa_salva = str(
+                paciente.get(
+                    "menopausa",
+                    ""
+                )
+            ).strip().upper()
+
+            esta_na_menopausa = (
+                menopausa_salva == "SIM"
+            )
 
             possui_dados_ciclo = (
                 ultima_menstruacao_salva != ""
                 and ciclo_salvo != ""
             )
 
-
             st.divider()
 
+            if esta_na_menopausa:
 
-            # -------------------------------------------------
-            # CICLO JÁ CONFIGURADO
-            # -------------------------------------------------
+                if os.path.exists("ancia.png"):
 
-            if possui_dados_ciclo:
-
-                resultado_ciclo = (
-                    calcular_fase_do_ciclo(
-                        ultima_menstruacao_salva,
-                        ciclo_salvo
+                    col_img1, col_img2, col_img3 = st.columns(
+                        [1.3, 1, 1.3]
                     )
+
+                    with col_img2:
+                        st.image(
+                            "ancia.png",
+                            use_container_width=True
+                        )
+
+                st.markdown(
+                    """
+<div style="
+    text-align:center;
+    padding:24px;
+    border-radius:16px;
+    background-color:#F4F7F5;
+    margin-bottom:15px;
+">
+
+<div style="
+    font-size:25px;
+    font-weight:700;
+">
+A Sábia Anciã
+</div>
+
+<div style="
+    font-size:16px;
+    margin-top:6px;
+    color:#666;
+">
+Menopausa
+</div>
+
+<div style="
+    font-size:15px;
+    margin-top:16px;
+">
+Uma fase de sabedoria, introspecção, autoconhecimento
+e novos ciclos de vida.
+</div>
+
+</div>
+""",
+                    unsafe_allow_html=True
                 )
 
+                if st.button(
+                    "⚙️ Alterar situação",
+                    use_container_width=True,
+                    key="botao_alterar_situacao_menopausa"
+                ):
+
+                    st.session_state[
+                        "editando_ciclo"
+                    ] = True
+
+            elif possui_dados_ciclo:
+
+                resultado_ciclo = calcular_fase_do_ciclo(
+                    ultima_menstruacao_salva,
+                    ciclo_salvo
+                )
 
                 if resultado_ciclo:
 
@@ -1403,65 +1479,64 @@ elif st.session_state.get("area") == "paciente":
 
                     st.markdown(
                         f"""
-                    <div style="
-                        text-align:center;
-                        padding:24px;
-                        border-radius:16px;
-                        background-color:#F4F7F5;
-                        margin-bottom:15px;
-                    ">
+<div style="
+    text-align:center;
+    padding:24px;
+    border-radius:16px;
+    background-color:#F4F7F5;
+    margin-bottom:15px;
+">
 
-                    <div style="
-                        font-size:15px;
-                        color:#666;
-                    ">
-                    Hoje você está no
-                    </div>
+<div style="
+    font-size:15px;
+    color:#666;
+">
+Hoje você está no
+</div>
 
-                    <div style="
-                        font-size:22px;
-                        font-weight:700;
-                        margin-top:4px;
-                    ">
-                    Dia {resultado_ciclo['dia_do_ciclo']} do seu ciclo
-                    </div>
+<div style="
+    font-size:22px;
+    font-weight:700;
+    margin-top:4px;
+">
+Dia {resultado_ciclo['dia_do_ciclo']} do seu ciclo
+</div>
 
-                    <div style="
-                        font-size:25px;
-                        font-weight:700;
-                        margin-top:18px;
-                    ">
-                    Fase {resultado_ciclo['numero_fase']} — {resultado_ciclo['nome_fase']}
-                    </div>
+<div style="
+    font-size:25px;
+    font-weight:700;
+    margin-top:18px;
+">
+Fase {resultado_ciclo['numero_fase']} — {resultado_ciclo['nome_fase']}
+</div>
 
-                    <div style="
-                        font-size:16px;
-                        margin-top:5px;
-                        color:#666;
-                    ">
-                    {resultado_ciclo['fase_biologica']}
-                    </div>
+<div style="
+    font-size:16px;
+    margin-top:5px;
+    color:#666;
+">
+{resultado_ciclo['fase_biologica']}
+</div>
 
-                    <div style="
-                        font-size:15px;
-                        margin-top:16px;
-                    ">
-                    {resultado_ciclo['descricao']}
-                    </div>
+<div style="
+    font-size:15px;
+    margin-top:16px;
+">
+{resultado_ciclo['descricao']}
+</div>
 
-                    <div style="
-                        margin-top:20px;
-                        font-weight:600;
-                    ">
-                    Próxima menstruação estimada em
-                    {resultado_ciclo['dias_para_proxima_menstruacao']} dia(s)
-                    </div>
+<div style="
+    margin-top:20px;
+    font-weight:600;
+">
+Próxima menstruação estimada em
+{resultado_ciclo['dias_para_proxima_menstruacao']} dia(s)
+</div>
 
-                    </div>
-                    """,
+</div>
+""",
                         unsafe_allow_html=True
                     )
-
 
                     st.caption(
                         "As fases e datas apresentadas são "
@@ -1470,7 +1545,6 @@ elif st.session_state.get("area") == "paciente":
                         "para determinar ovulação, fertilidade "
                         "ou como método contraceptivo."
                     )
-
 
                 if st.button(
                     "⚙️ Atualizar meu ciclo",
@@ -1481,11 +1555,6 @@ elif st.session_state.get("area") == "paciente":
                     st.session_state[
                         "editando_ciclo"
                     ] = True
-
-
-            # -------------------------------------------------
-            # AINDA NÃO CONFIGURADO
-            # -------------------------------------------------
 
             else:
 
@@ -1504,77 +1573,66 @@ elif st.session_state.get("area") == "paciente":
                         "editando_ciclo"
                     ] = True
 
-
-            # -------------------------------------------------
-            # FORMULÁRIO PARA CONFIGURAR / ATUALIZAR
-            # -------------------------------------------------
-
             if st.session_state.get(
                 "editando_ciclo",
                 False
             ):
 
                 st.write(
-                    "### 🌙 Atualizar meu ciclo"
+                    "### 🌙 Situação menstrual"
                 )
 
+                marcar_menopausa = st.checkbox(
+                    "Estou na menopausa",
+                    value=esta_na_menopausa,
+                    key="checkbox_menopausa_paciente"
+                )
 
-                # Tenta recuperar a última data salva
-                try:
+                if marcar_menopausa:
 
-                    data_padrao_ciclo = (
-                        datetime.strptime(
+                    st.caption(
+                        "Ao salvar, o acompanhamento de ciclo "
+                        "será substituído pela fase A Sábia Anciã. "
+                        "Você poderá alterar esta opção depois."
+                    )
+
+                    nova_ultima_menstruacao = None
+                    novo_ciclo_medio = None
+
+                else:
+
+                    try:
+                        data_padrao_ciclo = datetime.strptime(
                             ultima_menstruacao_salva,
                             "%d/%m/%Y"
                         ).date()
-                    )
+                    except ValueError:
+                        data_padrao_ciclo = date.today()
 
-                except ValueError:
+                    try:
+                        ciclo_padrao = int(
+                            ciclo_salvo
+                        )
 
-                    data_padrao_ciclo = (
-                        date.today()
-                    )
+                        if ciclo_padrao < 14 or ciclo_padrao > 50:
+                            ciclo_padrao = 28
 
-
-                # Tenta recuperar a duração salva
-                try:
-
-                    ciclo_padrao = int(
-                        ciclo_salvo
-                    )
-
-                    if (
-                        ciclo_padrao < 14
-                        or ciclo_padrao > 50
+                    except (
+                        ValueError,
+                        TypeError
                     ):
                         ciclo_padrao = 28
 
-                except (
-                    ValueError,
-                    TypeError
-                ):
-
-                    ciclo_padrao = 28
-
-
-                nova_ultima_menstruacao = (
-                    st.date_input(
+                    nova_ultima_menstruacao = st.date_input(
                         "Data da última menstruação",
                         value=data_padrao_ciclo,
-                        min_value=date(
-                            1900,
-                            1,
-                            1
-                        ),
+                        min_value=date(1900, 1, 1),
                         max_value=date.today(),
                         format="DD/MM/YYYY",
                         key="nova_ultima_menstruacao"
                     )
-                )
 
-
-                novo_ciclo_medio = (
-                    st.number_input(
+                    novo_ciclo_medio = st.number_input(
                         "Duração média do ciclo (dias)",
                         min_value=14,
                         max_value=50,
@@ -1582,44 +1640,50 @@ elif st.session_state.get("area") == "paciente":
                         step=1,
                         key="novo_ciclo_medio"
                     )
-                )
 
+                    st.caption(
+                        "Informe quantos dias, em média, "
+                        "há entre o primeiro dia de uma "
+                        "menstruação e o primeiro dia da próxima."
+                    )
 
-                st.caption(
-                    "Informe quantos dias, em média, "
-                    "há entre o primeiro dia de uma "
-                    "menstruação e o primeiro dia da próxima."
-                )
-
-
-                col_salvar, col_cancelar = (
-                    st.columns(2)
-                )
-
+                col_salvar, col_cancelar = st.columns(2)
 
                 with col_salvar:
 
                     if st.button(
-                        "💾 Salvar ciclo",
+                        "💾 Salvar",
                         type="primary",
                         use_container_width=True,
-                        key="salvar_ciclo"
+                        key="salvar_situacao_menstrual"
                     ):
 
-                        sucesso = (
-                            atualizar_ciclo_paciente(
-                                paciente[
-                                    "id_paciente"
-                                ],
+                        if marcar_menopausa:
+
+                            ultima_para_salvar = ""
+                            ciclo_para_salvar = ""
+                            menopausa_para_salvar = "SIM"
+
+                        else:
+
+                            ultima_para_salvar = (
                                 nova_ultima_menstruacao.strftime(
                                     "%d/%m/%Y"
-                                ),
-                                int(
-                                    novo_ciclo_medio
                                 )
                             )
-                        )
 
+                            ciclo_para_salvar = int(
+                                novo_ciclo_medio
+                            )
+
+                            menopausa_para_salvar = "NAO"
+
+                        sucesso = atualizar_ciclo_paciente(
+                            paciente["id_paciente"],
+                            ultima_para_salvar,
+                            ciclo_para_salvar,
+                            menopausa_para_salvar
+                        )
 
                         if sucesso:
 
@@ -1628,7 +1692,7 @@ elif st.session_state.get("area") == "paciente":
                             ] = False
 
                             st.success(
-                                "Dados do ciclo atualizados."
+                                "Situação menstrual atualizada."
                             )
 
                             st.rerun()
@@ -1636,10 +1700,8 @@ elif st.session_state.get("area") == "paciente":
                         else:
 
                             st.error(
-                                "Não foi possível atualizar "
-                                "os dados do ciclo."
+                                "Não foi possível atualizar os dados."
                             )
-
 
                 with col_cancelar:
 
@@ -1654,6 +1716,7 @@ elif st.session_state.get("area") == "paciente":
                         ] = False
 
                         st.rerun()
+
         try:
 
             pesagens_paciente = (
@@ -1851,6 +1914,10 @@ elif st.session_state.get("area") == "paciente":
                     yaxis_title="Peso (kg)"
                 )
 
+                fig_peso = formatar_eixo_data(
+                    fig_peso
+                )
+
                 st.plotly_chart(
                     fig_peso,
                     use_container_width=True
@@ -1889,6 +1956,10 @@ elif st.session_state.get("area") == "paciente":
                         referencias["imc"][1]
                     )
 
+                fig_imc = formatar_eixo_data(
+                    fig_imc
+                )
+
                 st.plotly_chart(
                     fig_imc,
                     use_container_width=True
@@ -1926,6 +1997,10 @@ elif st.session_state.get("area") == "paciente":
                         referencias["gordura"][0],
                         referencias["gordura"][1]
                     )
+
+                fig_gordura = formatar_eixo_data(
+                    fig_gordura
+                )
 
                 st.plotly_chart(
                     fig_gordura,
@@ -1968,6 +2043,10 @@ elif st.session_state.get("area") == "paciente":
                         referencias["agua"][1]
                     )
 
+                fig_agua = formatar_eixo_data(
+                    fig_agua
+                )
+
                 st.plotly_chart(
                     fig_agua,
                     use_container_width=True
@@ -2006,6 +2085,10 @@ elif st.session_state.get("area") == "paciente":
                         referencias["musculo"][1]
                     )
 
+                fig_musculo = formatar_eixo_data(
+                    fig_musculo
+                )
+
                 st.plotly_chart(
                     fig_musculo,
                     use_container_width=True
@@ -2043,6 +2126,10 @@ elif st.session_state.get("area") == "paciente":
                         referencias["gordura_visceral"][0],
                         referencias["gordura_visceral"][1]
                     )
+
+                fig_visceral = formatar_eixo_data(
+                    fig_visceral
+                )
 
                 st.plotly_chart(
                     fig_visceral,
@@ -2303,56 +2390,65 @@ elif st.session_state.get("area") == "profissional":
             )
 
         # =====================================================
-        # DADOS DO CICLO MENSTRUAL
+        # DADOS DO CICLO MENSTRUAL / MENOPAUSA
         # =====================================================
 
             ultima_menstruacao = None
             ciclo_medio_dias = None
-
+            menopausa = "NAO"
 
             if sexo == "Feminino":
 
                 st.divider()
 
                 st.write(
-                    "#### 🌙 Ciclo menstrual"
+                    "#### 🌙 Situação menstrual"
                 )
 
                 st.caption(
                     "Preenchimento opcional. "
-                    "A paciente também poderá configurar "
+                    "A paciente também poderá atualizar "
                     "esses dados posteriormente."
                 )
 
-                informar_ciclo = st.checkbox(
-                    "Cadastrar dados do ciclo agora"
+                menopausa_marcada = st.checkbox(
+                    "Está na menopausa",
+                    key="cadastro_menopausa"
                 )
 
-                if informar_ciclo:
+                if menopausa_marcada:
 
-                    ultima_menstruacao = (
-                        st.date_input(
+                    menopausa = "SIM"
+
+                    st.caption(
+                        "O portal exibirá permanentemente "
+                        "A Sábia Anciã para esta paciente."
+                    )
+
+                else:
+
+                    informar_ciclo = st.checkbox(
+                        "Cadastrar dados do ciclo agora"
+                    )
+
+                    if informar_ciclo:
+
+                        ultima_menstruacao = st.date_input(
                             "Data da última menstruação",
                             value=date.today(),
-                            min_value=date(
-                                1900,
-                                1,
-                                1
-                            ),
+                            min_value=date(1900, 1, 1),
                             max_value=date.today(),
                             format="DD/MM/YYYY"
                         )
-                    )
 
-                    ciclo_medio_dias = (
-                        st.number_input(
+                        ciclo_medio_dias = st.number_input(
                             "Duração média do ciclo (dias)",
                             min_value=14,
                             max_value=50,
                             value=28,
                             step=1
                         )
-                    )
+
             # =====================================================
             # BOTÃO DE CADASTRO
             # =====================================================
@@ -2433,6 +2529,8 @@ elif st.session_state.get("area") == "profissional":
                                 if ciclo_medio_dias
                                 else ""
                             ),
+
+                            "menopausa": menopausa,
                         }
                         
 

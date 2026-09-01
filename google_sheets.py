@@ -21,6 +21,7 @@ COLUNAS_PACIENTES = [
     "ativo",
     "ultima_menstruacao",
     "ciclo_medio_dias",
+    "menopausa",
 ]
 
 COLUNAS_PESAGENS = [
@@ -108,7 +109,7 @@ def obter_aba_pesagens():
 def listar_pacientes():
     aba = obter_aba_pacientes()
 
-    valores = aba.get("A:M")
+    valores = aba.get("A:N")
 
     if len(valores) <= 1:
         return []
@@ -151,6 +152,7 @@ def adicionar_paciente(paciente):
         paciente["ativo"],
         paciente.get("ultima_menstruacao", ""),
         paciente.get("ciclo_medio_dias", ""),
+        paciente.get("menopausa", ""),
     ]
 
     aba.append_row(
@@ -291,11 +293,21 @@ def excluir_pesagem(id_pesagem):
 def atualizar_ciclo_paciente(
     id_paciente,
     ultima_menstruacao,
-    ciclo_medio_dias
+    ciclo_medio_dias,
+    menopausa="NAO"
 ):
+    """
+    Atualiza os dados relacionados ao ciclo menstrual.
+
+    Colunas:
+    L = ultima_menstruacao
+    M = ciclo_medio_dias
+    N = menopausa
+    """
+
     aba = obter_aba_pacientes()
 
-    valores = aba.get("A:M")
+    valores = aba.get("A:N")
 
     for numero_linha, linha in enumerate(
         valores[1:],
@@ -314,11 +326,12 @@ def atualizar_ciclo_paciente(
         ).strip():
 
             aba.update(
-                range_name=f"L{numero_linha}:M{numero_linha}",
+                range_name=f"L{numero_linha}:N{numero_linha}",
                 values=[
                     [
                         ultima_menstruacao,
-                        ciclo_medio_dias
+                        ciclo_medio_dias,
+                        menopausa
                     ]
                 ],
                 value_input_option="USER_ENTERED"
