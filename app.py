@@ -1840,6 +1840,23 @@ Próxima menstruação estimada em
                         delta_color="off"
                     )
 
+                observacao_ultima = str(
+                    ultima.get(
+                        "observacoes",
+                        ""
+                    )
+                ).strip()
+
+                if observacao_ultima:
+
+                    st.markdown(
+                        "### 💬 Comentário da nutricionista"
+                    )
+
+                    st.info(
+                        observacao_ultima
+                    )
+
                 # =====================================================
                 # REFERÊNCIAS DO PACIENTE
                 # =====================================================
@@ -2754,7 +2771,7 @@ elif st.session_state.get("area") == "profissional":
                 )
 
                 observacoes = st.text_area(
-                    "Observações"
+                    "Comentário para o paciente"
                 )
 
                 if st.button(
@@ -3135,7 +3152,7 @@ elif st.session_state.get("area") == "profissional":
                     )
 
                     observacoes = st.text_area(
-                        "Observações",
+                        "Comentário para o paciente",
                         value=str(
                             registro.get(
                                 "observacoes",
