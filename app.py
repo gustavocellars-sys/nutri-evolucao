@@ -319,7 +319,7 @@ def renderizar_distribuicao_gordura(ultima):
     if not os.path.exists(caminho_boneco):
         st.info(
             "A distribuição regional estará disponível "
-            "quando a imagem boneco_corpo.png for adicionada."
+            "quando a imagem infográfica for adicionada."
         )
         return
 
