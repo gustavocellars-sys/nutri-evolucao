@@ -1,4 +1,5 @@
 import os
+import base64
 import random
 import string
 import unicodedata
@@ -277,6 +278,201 @@ def converter_data_para_date(valor):
 def formatar_numero(numero, casas=1):
 
     return f"{numero:.{casas}f}".replace(".", ",")
+
+
+def formatar_percentual_regional(valor):
+    """
+    Formata um percentual regional da BF1000.
+    Registros antigos sem esse dado aparecem como traço.
+    """
+
+    if valor is None:
+        return "—"
+
+    texto = str(valor).strip()
+
+    if texto == "":
+        return "—"
+
+    try:
+        numero = float(
+            texto.replace(",", ".")
+        )
+    except (ValueError, TypeError):
+        return "—"
+
+    return f"{formatar_numero(numero)}%"
+
+
+def renderizar_distribuicao_gordura(ultima):
+    """
+    Mostra a distribuição regional de gordura da última avaliação
+    sobre a imagem boneco_corpo.png.
+
+    O boneco é visto de frente:
+    - o lado direito anatômico fica à esquerda de quem observa;
+    - o lado esquerdo anatômico fica à direita de quem observa.
+    """
+
+    caminho_boneco = "boneco_corpo.png"
+
+    if not os.path.exists(caminho_boneco):
+        st.info(
+            "A distribuição regional estará disponível "
+            "quando a imagem boneco_corpo.png for adicionada."
+        )
+        return
+
+    with open(caminho_boneco, "rb") as arquivo:
+        imagem_b64 = base64.b64encode(
+            arquivo.read()
+        ).decode("utf-8")
+
+    braco_direito = formatar_percentual_regional(
+        ultima.get(
+            "gordura_braco_direito_pct",
+            ""
+        )
+    )
+
+    braco_esquerdo = formatar_percentual_regional(
+        ultima.get(
+            "gordura_braco_esquerdo_pct",
+            ""
+        )
+    )
+
+    perna_direita = formatar_percentual_regional(
+        ultima.get(
+            "gordura_perna_direita_pct",
+            ""
+        )
+    )
+
+    perna_esquerda = formatar_percentual_regional(
+        ultima.get(
+            "gordura_perna_esquerda_pct",
+            ""
+        )
+    )
+    gordura_abdominal = formatar_percentual_regional(
+        ultima.get(
+            "gordura_abdominal",
+            ""
+        )
+    )
+    st.html(
+        f"""
+<div style="
+    position:relative;
+    width:100%;
+    max-width:390px;
+    aspect-ratio:2 / 3;
+    margin:0 auto 10px auto;
+">
+
+    <img
+        src="data:image/png;base64,{imagem_b64}"
+        style="
+            position:absolute;
+            inset:0;
+            width:100%;
+            height:100%;
+            object-fit:contain;
+        "
+    />
+
+    <!-- Braço direito anatômico: lado esquerdo de quem olha -->
+    <div style="
+        position:absolute;
+        top:36%;
+        left:31%;
+        transform:translate(-50%, -50%);
+        min-width:52px;
+        text-align:center;
+        padding:4px 6px;
+        border-radius:10px;
+        background:rgba(255,255,255,0.82);
+        font-size:15px;
+        font-weight:700;
+        box-shadow:0 1px 5px rgba(0,0,0,0.10);
+    ">
+        {braco_direito}
+    </div>
+
+    <!-- Braço esquerdo anatômico: lado direito de quem olha -->
+    <div style="
+        position:absolute;
+        top:36%;
+        left:69%;
+        transform:translate(-50%, -50%);
+        min-width:52px;
+        text-align:center;
+        padding:4px 6px;
+        border-radius:10px;
+        background:rgba(255,255,255,0.82);
+        font-size:15px;
+        font-weight:700;
+        box-shadow:0 1px 5px rgba(0,0,0,0.10);
+    ">
+        {braco_esquerdo}
+    </div>
+
+    <!-- Perna direita anatômica -->
+    <div style="
+        position:absolute;
+        top:66%;
+        left:42%;
+        transform:translate(-50%, -50%);
+        min-width:52px;
+        text-align:center;
+        padding:4px 6px;
+        border-radius:10px;
+        background:rgba(255,255,255,0.82);
+        font-size:15px;
+        font-weight:700;
+        box-shadow:0 1px 5px rgba(0,0,0,0.10);
+    ">
+        {perna_direita}
+    </div>
+
+    <!-- Perna esquerda anatômica -->
+    <div style="
+        position:absolute;
+        top:66%;
+        left:58%;
+        transform:translate(-50%, -50%);
+        min-width:52px;
+        text-align:center;
+        padding:4px 6px;
+        border-radius:10px;
+        background:rgba(255,255,255,0.82);
+        font-size:15px;
+        font-weight:700;
+        box-shadow:0 1px 5px rgba(0,0,0,0.10);
+    ">
+        {perna_esquerda}
+    </div>
+    <!-- Gordura abdominal -->
+    <div style="
+        position:absolute;
+        top:46%;
+        left:50%;
+        transform:translate(-50%, -50%);
+        min-width:52px;
+        text-align:center;
+        padding:4px 6px;
+        border-radius:10px;
+        background:rgba(255,255,255,0.82);
+        font-size:15px;
+        font-weight:700;
+        box-shadow:0 1px 5px rgba(0,0,0,0.10);
+    ">
+        {gordura_abdominal}
+    </div>
+</div>
+"""
+    )
 
 
 # =========================================================
@@ -1857,6 +2053,14 @@ Próxima menstruação estimada em
                         observacao_ultima
                     )
 
+                st.markdown(
+                    "### Distribuição da gordura pelo corpo"
+                )
+
+                renderizar_distribuicao_gordura(
+                    ultima
+                )
+
                 # =====================================================
                 # REFERÊNCIAS DO PACIENTE
                 # =====================================================
@@ -2724,6 +2928,34 @@ elif st.session_state.get("area") == "profissional":
                     step=0.1
                 )
 
+                st.write(
+                    "#### Distribuição regional da gordura"
+                )
+
+                gordura_braco_direito = st.number_input(
+                    "Gordura braço direito (%)",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+                gordura_braco_esquerdo = st.number_input(
+                    "Gordura braço esquerdo (%)",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+                gordura_perna_direita = st.number_input(
+                    "Gordura perna direita (%)",
+                    min_value=0.0,
+                    step=0.1
+                )
+
+                gordura_perna_esquerda = st.number_input(
+                    "Gordura perna esquerda (%)",
+                    min_value=0.0,
+                    step=0.1
+                )
+
                 bmr = st.number_input(
                     "BMR (kcal)",
                     min_value=0,
@@ -2824,7 +3056,15 @@ elif st.session_state.get("area") == "profissional":
                             "braco_cm": braco,
                             "coxa_cm": coxa,
                             "observacoes":
-                                observacoes.strip()
+                                observacoes.strip(),
+                            "gordura_braco_direito_pct":
+                                gordura_braco_direito,
+                            "gordura_braco_esquerdo_pct":
+                                gordura_braco_esquerdo,
+                            "gordura_perna_direita_pct":
+                                gordura_perna_direita,
+                            "gordura_perna_esquerda_pct":
+                                gordura_perna_esquerda
                         }
 
                         adicionar_pesagem(
@@ -3070,6 +3310,58 @@ elif st.session_state.get("area") == "profissional":
                         key="edit_abdominal"
                     )
 
+                    st.write(
+                        "#### Distribuição regional da gordura"
+                    )
+
+                    gordura_braco_direito = st.number_input(
+                        "Gordura braço direito (%)",
+                        value=converter_numero(
+                            registro.get(
+                                "gordura_braco_direito_pct",
+                                ""
+                            )
+                        ),
+                        step=0.1,
+                        key="edit_gordura_braco_direito"
+                    )
+
+                    gordura_braco_esquerdo = st.number_input(
+                        "Gordura braço esquerdo (%)",
+                        value=converter_numero(
+                            registro.get(
+                                "gordura_braco_esquerdo_pct",
+                                ""
+                            )
+                        ),
+                        step=0.1,
+                        key="edit_gordura_braco_esquerdo"
+                    )
+
+                    gordura_perna_direita = st.number_input(
+                        "Gordura perna direita (%)",
+                        value=converter_numero(
+                            registro.get(
+                                "gordura_perna_direita_pct",
+                                ""
+                            )
+                        ),
+                        step=0.1,
+                        key="edit_gordura_perna_direita"
+                    )
+
+                    gordura_perna_esquerda = st.number_input(
+                        "Gordura perna esquerda (%)",
+                        value=converter_numero(
+                            registro.get(
+                                "gordura_perna_esquerda_pct",
+                                ""
+                            )
+                        ),
+                        step=0.1,
+                        key="edit_gordura_perna_esquerda"
+                    )
+
                     bmr = st.number_input(
                         "BMR (kcal)",
                         value=converter_inteiro(
@@ -3203,7 +3495,15 @@ elif st.session_state.get("area") == "profissional":
                             "braco_cm": braco,
                             "coxa_cm": coxa,
                             "observacoes":
-                                observacoes.strip()
+                                observacoes.strip(),
+                            "gordura_braco_direito_pct":
+                                gordura_braco_direito,
+                            "gordura_braco_esquerdo_pct":
+                                gordura_braco_esquerdo,
+                            "gordura_perna_direita_pct":
+                                gordura_perna_direita,
+                            "gordura_perna_esquerda_pct":
+                                gordura_perna_esquerda
                         }
 
                         if editar_pesagem(

@@ -36,6 +36,10 @@ COLUNAS_PESAGENS = [
     "massa_ossea_kg",
     "gordura_visceral",
     "gordura_abdominal",
+    "gordura_braco_direito_pct",
+    "gordura_braco_esquerdo_pct",
+    "gordura_perna_direita_pct",
+    "gordura_perna_esquerda_pct",
     "bmr_kcal",
     "amr_kcal",
     "cintura_cm",
@@ -45,7 +49,6 @@ COLUNAS_PESAGENS = [
     "coxa_cm",
     "observacoes",
 ]
-
 
 def conectar_planilha():
 
@@ -164,7 +167,7 @@ def adicionar_paciente(paciente):
 def listar_pesagens():
     aba = obter_aba_pesagens()
 
-    valores = aba.get("A:S")
+    valores = aba.get("A:W")
 
     if len(valores) <= 1:
         return []
@@ -205,6 +208,10 @@ def adicionar_pesagem(pesagem):
         pesagem["massa_ossea_kg"],
         pesagem["gordura_visceral"],
         pesagem["gordura_abdominal"],
+        pesagem.get("gordura_braco_direito_pct", ""),
+        pesagem.get("gordura_braco_esquerdo_pct", ""),
+        pesagem.get("gordura_perna_direita_pct", ""),
+        pesagem.get("gordura_perna_esquerda_pct", ""),
         pesagem["bmr_kcal"],
         pesagem["amr_kcal"],
         pesagem["cintura_cm"],
@@ -236,7 +243,7 @@ def listar_pesagens_por_paciente(id_paciente):
 def editar_pesagem(id_pesagem, pesagem_atualizada):
     aba = obter_aba_pesagens()
 
-    valores = aba.get("A:S")
+    valores = aba.get("A:W")
 
     for numero_linha, linha in enumerate(valores[1:], start=2):
 
@@ -254,6 +261,22 @@ def editar_pesagem(id_pesagem, pesagem_atualizada):
                 pesagem_atualizada["massa_ossea_kg"],
                 pesagem_atualizada["gordura_visceral"],
                 pesagem_atualizada["gordura_abdominal"],
+                pesagem_atualizada.get(
+                    "gordura_braco_direito_pct",
+                    ""
+                ),
+                pesagem_atualizada.get(
+                    "gordura_braco_esquerdo_pct",
+                    ""
+                ),
+                pesagem_atualizada.get(
+                    "gordura_perna_direita_pct",
+                    ""
+                ),
+                pesagem_atualizada.get(
+                    "gordura_perna_esquerda_pct",
+                    ""
+                ),
                 pesagem_atualizada["bmr_kcal"],
                 pesagem_atualizada["amr_kcal"],
                 pesagem_atualizada["cintura_cm"],
@@ -265,7 +288,7 @@ def editar_pesagem(id_pesagem, pesagem_atualizada):
             ]
 
             aba.update(
-                range_name=f"A{numero_linha}:S{numero_linha}",
+                range_name=f"A{numero_linha}:W{numero_linha}",
                 values=[nova_linha],
                 value_input_option="USER_ENTERED"
             )
