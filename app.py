@@ -2146,7 +2146,7 @@ Próxima menstruação estimada em
 
                 st.plotly_chart(
                     fig_peso,
-                    use_container_width=True
+                    use_container_width=True,
                     config=CONFIG_GRAFICO_PACIENTE
                 )
 
@@ -2189,7 +2189,7 @@ Próxima menstruação estimada em
 
                 st.plotly_chart(
                     fig_imc,
-                    use_container_width=True
+                    use_container_width=True,
                     config=CONFIG_GRAFICO_PACIENTE
                 )
 
@@ -2232,7 +2232,7 @@ Próxima menstruação estimada em
 
                 st.plotly_chart(
                     fig_gordura,
-                    use_container_width=True
+                    use_container_width=True,
                     config=CONFIG_GRAFICO_PACIENTE
                 )
 
@@ -2278,7 +2278,7 @@ Próxima menstruação estimada em
 
                 st.plotly_chart(
                     fig_agua,
-                    use_container_width=True
+                    use_container_width=True,
                     config=CONFIG_GRAFICO_PACIENTE
                 )
 
@@ -2321,7 +2321,7 @@ Próxima menstruação estimada em
 
                 st.plotly_chart(
                     fig_musculo,
-                    use_container_width=True
+                    use_container_width=True,
                     config=CONFIG_GRAFICO_PACIENTE
                 )
 
@@ -2364,7 +2364,7 @@ Próxima menstruação estimada em
 
                 st.plotly_chart(
                     fig_visceral,
-                    use_container_width=True
+                    use_container_width=True,
                     config=CONFIG_GRAFICO_PACIENTE
                 )
 
